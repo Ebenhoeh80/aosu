@@ -37,6 +37,7 @@ impl Default for AppState {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceDto {
     id: String,
     name: String,
@@ -77,6 +78,7 @@ pub fn list_devices(state: State<AppState>) -> Result<Vec<DeviceDto>, String> {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EventDto {
     device: String,
     kind: String,
@@ -105,6 +107,7 @@ pub fn recent_events(state: State<AppState>) -> Result<Vec<EventDto>, String> {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NotificationDto {
     id: String,
     device: Option<String>,
@@ -156,6 +159,7 @@ pub fn acknowledge_notification(state: State<AppState>, id: String) -> Result<()
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PortCheckDto {
     port: u16,
     open: bool,

@@ -24,12 +24,14 @@ pub fn contains_sensitive_field(key: &str) -> bool {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PortCheckResult {
     pub port: u16,
     pub open: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NetworkDiagnostics {
     pub host: String,
     pub ports: Vec<PortCheckResult>,
@@ -64,6 +66,7 @@ pub const DEFAULT_PROBE_PORTS: &[u16] = &[80, 443, 554, 6668, 8000, 8080, 8554, 
 /// is no field here that could, since this crate never holds a
 /// credential or key in the first place (see ADR 0002).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DiagnosticsBundle {
     pub generated_at_epoch_seconds: u64,
     pub app_version: String,
@@ -131,7 +134,7 @@ mod tests {
     fn bundle_round_trips_through_json_without_a_network_scan() {
         let bundle = build_bundle("mock", crate::capability::CapabilityReport::new(), None);
         let json = serde_json::to_string(&bundle).unwrap();
-        assert!(json.contains("\"active_transport\":\"mock\""));
+        assert!(json.contains("\"activeTransport\":\"mock\""));
         let back: DiagnosticsBundle = serde_json::from_str(&json).unwrap();
         assert_eq!(back.active_transport, "mock");
     }

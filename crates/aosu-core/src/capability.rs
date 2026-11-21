@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Capability {
     Discover,
     DeviceList,
@@ -20,6 +21,7 @@ pub enum Capability {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum Support {
     /// Observed working against the real target.
     Supported,
@@ -41,6 +43,7 @@ pub enum BlockedReason {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct CapabilityReport {
     entries: BTreeMap<Capability, Support>,
 }
@@ -61,5 +64,32 @@ impl CapabilityReport {
 
     pub fn iter(&self) -> impl Iterator<Item = (&Capability, &Support)> {
         self.entries.iter()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Locks down the exact wire shape the frontend (app/src/types.ts)
+    /// is written against -- camelCase keys, `{"type": "...", ...}`
+    /// tagging for `Support`. If this test ever needs to change, the
+    /// TypeScript types need the matching change in the same commit.
+    #[test]
+    fn json_shape_matches_what_the_frontend_expects() {
+        let mut r = CapabilityReport::new();
+        r.set(Capability::Discover, Support::Supported);
+        r.set(
+            Capability::LiveVideo,
+            Support::Blocked {
+                reason: BlockedReason::LocalKeyRequired,
+            },
+        );
+        let json = serde_json::to_value(&r).unwrap();
+        assert_eq!(json["discover"], serde_json::json!({"type": "supported"}));
+        assert_eq!(
+            json["liveVideo"],
+            serde_json::json!({"type": "blocked", "reason": "LocalKeyRequired"})
+        );
     }
 }
