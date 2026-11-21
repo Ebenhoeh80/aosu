@@ -2,6 +2,7 @@
 *.apk
 *.png
 *.xml
+!app/src-tauri/icons/*.png
 __pycache__/
 .pytest_cache/
 PROJECT_CHARTER.md
@@ -10,11 +11,16 @@ project-start.mc
 # Rust
 /target/
 crates/*/target/
+# Machine-local linker override (see CONTRIBUTING.md); do not commit --
+# CI and MSVC-equipped machines must not pick up another contributor's
+# absolute MinGW path.
+/.cargo/config.toml
 
 # Node / frontend
 app/node_modules/
 app/dist/
 app/src-tauri/target/
+app/src-tauri/gen/
 app/test-results/
 app/playwright-report/
 app/.vite/

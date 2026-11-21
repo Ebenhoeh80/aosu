@@ -4,8 +4,8 @@
 
 use crate::capability::CapabilityReport;
 use crate::device::{
-    AudioChannelHandle, Command, Device, DeviceId, Event, MediaStreamHandle, Recording,
-    TimeRange, Timestamp,
+    AudioChannelHandle, Command, Device, DeviceId, Event, MediaStreamHandle, Recording, TimeRange,
+    Timestamp,
 };
 use thiserror::Error;
 

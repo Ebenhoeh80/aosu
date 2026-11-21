@@ -6,7 +6,7 @@
 
 pub mod tuya_frame;
 
-use crate::capability::{Capability, CapabilityReport, Support, BlockedReason};
+use crate::capability::{BlockedReason, Capability, CapabilityReport, Support};
 use crate::device::*;
 use crate::transport::{Result, Transport, TransportError};
 use std::net::TcpStream;

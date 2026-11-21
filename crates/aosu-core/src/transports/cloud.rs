@@ -3,7 +3,7 @@
 //! implement the `Gz-Sign` signature itself -- that stays an open,
 //! intentionally undone TODO, see ADR 0002.
 
-use crate::capability::{Capability, CapabilityReport, Support, BlockedReason};
+use crate::capability::{BlockedReason, Capability, CapabilityReport, Support};
 use crate::device::*;
 use crate::transport::{Result, Transport, TransportError};
 
@@ -36,14 +36,9 @@ impl SignedRequestShape {
     }
 }
 
+#[derive(Default)]
 pub struct CloudTransport {
     pub credentials: Option<CloudCredentials>,
-}
-
-impl Default for CloudTransport {
-    fn default() -> Self {
-        Self { credentials: None }
-    }
 }
 
 impl Transport for CloudTransport {
@@ -108,7 +103,10 @@ mod tests {
     #[test]
     fn devices_require_credentials() {
         let t = CloudTransport::default();
-        assert!(matches!(t.devices(), Err(TransportError::CredentialsRequired)));
+        assert!(matches!(
+            t.devices(),
+            Err(TransportError::CredentialsRequired)
+        ));
     }
 
     #[test]

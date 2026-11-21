@@ -16,7 +16,7 @@ Siehe `docs/architecture.md` für die Begründung der Phaseneinteilung (gebaut n
 - [x] `LocalTransport`-Grundgerüst: Port-Erreichbarkeit, generische Tuya-Frame-Kodierung/-Dekodierung (unit-getestet, öffentliches Format).
 - [x] `CloudTransport`-Grundgerüst: echte Hostnamen, Datentypen nach beobachteten Feldern, saubere `CredentialsRequired`-Rückgabe.
 - [ ] Diagnose-Knopf in der UI verdrahten (Tauri-Kommando `run_network_diagnostics` existiert bereits, UI-Anbindung fehlt).
-- [ ] Rust-Build lokal verifizieren (**blockiert**, siehe unten).
+- [x] Rust-Build lokal verifiziert (siehe gelöster Blocker unten) — voller Workspace inkl. Tauri/WebView2 baut, 17/17 Tests grün, Clippy sauber.
 
 ## Phase 2 — abhängig von externen Entscheidungen
 
@@ -27,5 +27,5 @@ Siehe `docs/architecture.md` für die Begründung der Phaseneinteilung (gebaut n
 
 | Blocker | Auswirkung | Workaround |
 |---|---|---|
-| MSVC-Build-Tools fehlen, Installation erfordert Admin-Elevation (nicht-interaktiv nicht durchführbar) | `cargo build`/`cargo test` für `aosu-core` und die Tauri-App können auf dieser Maschine noch nicht verifiziert werden | Code geschrieben und strukturell korrekt; CI läuft auf `windows-latest`-Runnern mit vorinstalliertem MSVC und verifiziert es dort. Lokal: Nutzer führt `winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools"` selbst mit Admin-Rechten aus. |
+| ~~MSVC-Build-Tools fehlen, Installation erfordert Admin-Elevation~~ **gelöst** | — | Workaround statt MSVC: `winget install BrechtSanders.WinLibs.POSIX.UCRT --scope user` (kein Admin nötig) + `rustup toolchain install stable-x86_64-pc-windows-gnu` + `rustup default stable-x86_64-pc-windows-gnu` + projektlokale `.cargo/config.toml` mit MinGW-Linkerpfad. Damit baut der volle Workspace inkl. Tauri/WebView2 lokal. CI nutzt weiterhin natives MSVC auf `windows-latest`. |
 | Kein GitHub-Remote konfiguriert | Keine echten Issues/Milestones anlegbar, CI läuft nicht wirklich | Roadmap lokal als Markdown geführt; GitHub-Repo-Erstellung ist eine Nutzerentscheidung (Name, öffentlich/privat) |
