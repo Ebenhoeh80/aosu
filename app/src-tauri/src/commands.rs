@@ -2,7 +2,7 @@
 //! on purpose -- all real logic lives in the core crate so it stays
 //! testable with plain `cargo test`, no Tauri runtime required.
 
-use aosu_core::{build, Device, DeviceId, Event, Timestamp, TransportKind};
+use aosu_core::{Device, DeviceId, Event, Timestamp, TransportConfig, TransportRegistry};
 use serde::Serialize;
 use std::sync::Mutex;
 use tauri::State;
@@ -13,8 +13,12 @@ pub struct AppState {
 
 impl Default for AppState {
     fn default() -> Self {
+        let registry = TransportRegistry::with_builtins();
+        let transport = registry
+            .build("mock", &TransportConfig::default())
+            .expect("the built-in \"mock\" transport is always registered");
         Self {
-            transport: Mutex::new(build(TransportKind::Mock)),
+            transport: Mutex::new(transport),
         }
     }
 }

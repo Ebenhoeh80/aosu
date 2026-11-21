@@ -4,7 +4,9 @@ Siehe `docs/architecture.md` für die Begründung der Phaseneinteilung (gebaut n
 
 ## Phase 0 — Projektgerüst (abgeschlossen)
 
-- [x] Rust-Workspace mit `crates/aosu-core` (Transport-Trait, Capability-Modell, Mock/Local/Cloud-Transport-Grundgerüste, Diagnose-Modul, Plugin-Registry) — 16 Unit-Tests inkl. Property-Test.
+- [x] Rust-Workspace mit `crates/aosu-core` (Transport-Trait, Capability-Modell, Mock/Local/Cloud-Transport-Grundgerüste, Diagnose-Modul) — 19 Unit-Tests.
+- [x] **`crates/tuya-lan-protocol`**: generisches, markenunabhängiges Tuya-LAN-Framing als eigenständige, wiederverwendbare Crate herausgelöst (5 Tests inkl. Property-Test). Siehe `docs/ecosystem-integration.md`.
+- [x] Transport-**Registry** statt geschlossenem Enum: `TransportRegistry::register(name, factory)` erlaubt Dritt-Code, eigene Transporte zu registrieren, ohne Kern-Code zu ändern.
 - [x] Tauri+React+TypeScript+Vite+Tailwind-App-Grundgerüst unter `app/` mit Geräteliste und Diagnose-Ansicht gegen Mock-Daten — 7 Vitest-Tests, Playwright-Smoke-Test.
 - [x] Home-Assistant-Custom-Component-Grundgerüst unter `homeassistant/custom_components/aosu/` (Config-Flow, camera/binary_sensor/sensor-Plattformen gegen Mock-Backend) — 3 pytest-Tests für die reine Python-Logik.
 - [x] Push-Benachrichtigungs-Brücke (`tools/notification_bridge.py`) — 6 pytest-Tests.

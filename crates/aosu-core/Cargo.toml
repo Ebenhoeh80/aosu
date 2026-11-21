@@ -8,7 +8,4 @@ description = "Transport-agnostic core for an Aosu/H1L desktop client: device mo
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
-crc32fast = "1"
-
-[dev-dependencies]
-proptest = "1"
+tuya-lan-protocol = { path = "../tuya-lan-protocol" }

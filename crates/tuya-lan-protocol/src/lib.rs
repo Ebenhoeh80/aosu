@@ -1,10 +1,16 @@
 //! Generic, publicly documented Tuya LAN wire framing (magic bytes,
 //! sequence, command, length, CRC32, footer). This is the open protocol
 //! format published in independent implementations such as tinytuya and
-//! LocalTuya -- not an Aosu/Glazero secret, and no device key is needed to
-//! build or parse the envelope itself. See `docs/adr-0002-path-reassessment.md`
-//! and `docs/architecture.md` for why authentication (the `local_key`) is a
-//! separate, still-open question this module deliberately does not touch.
+//! LocalTuya -- not a secret of any particular vendor or app, and no
+//! device key is needed to build or parse the envelope itself.
+//!
+//! This crate is deliberately **brand-agnostic**: it knows nothing about
+//! Aosu, Glazero, or any other specific Tuya-derived product. Any client
+//! for any Tuya-ecosystem camera or device can depend on it. Device-key
+//! handling, DP (data point) semantics and vendor-specific behavior stay
+//! out of this crate on purpose -- that's each client's own problem, and
+//! each may differ (see `docs/architecture.md` in the aosu-desktop
+//! project for how one such client, built on this crate, is laid out).
 
 pub const PREFIX: u32 = 0x0000_55AA;
 pub const SUFFIX: u32 = 0x0000_AA55;
@@ -29,7 +35,8 @@ impl Command {
 }
 
 /// Build a frame with the given sequence number, command and payload.
-/// Mirrors the generic envelope; carries no Aosu-specific or secret bytes.
+/// Mirrors the generic envelope; carries no vendor-specific or secret
+/// bytes -- callers own any encryption/signing of the payload itself.
 pub fn build_frame(seq: u32, command: Command, payload: &[u8]) -> Vec<u8> {
     let mut body = Vec::with_capacity(16 + payload.len());
     body.extend_from_slice(&PREFIX.to_be_bytes());

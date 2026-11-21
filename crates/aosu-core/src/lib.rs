@@ -10,5 +10,5 @@ pub mod transports;
 
 pub use capability::{BlockedReason, Capability, CapabilityReport, Support};
 pub use device::*;
-pub use registry::{build, TransportKind};
+pub use registry::{TransportConfig, TransportRegistry};
 pub use transport::{Result, Transport, TransportError};

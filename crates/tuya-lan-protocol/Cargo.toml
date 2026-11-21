@@ -1,0 +1,13 @@
+[package]
+name = "tuya-lan-protocol"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Generic, brand-agnostic Tuya LAN wire framing (magic bytes, sequence, command, length, CRC32, footer). No vendor secrets, no device keys -- just the open envelope format shared by any Tuya-derived device (Aosu, and others). Reusable by any Tuya-ecosystem client, not specific to this project."
+repository = "https://github.com/REPLACE_ME/aosu"
+
+[dependencies]
+crc32fast = "1"
+
+[dev-dependencies]
+proptest = "1"

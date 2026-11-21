@@ -1,5 +1,9 @@
 # Architektur: Aosu-Desktop-Client (Stand 2026-11-21, nach H1L-Netzwerkbefunden)
 
+## Doppeltes Ziel: Aosu-Client und Tuya-Plattform
+
+Jede Design-Entscheidung hier wird gegen zwei Fragen geprüft: (1) Baut das einen funktionierenden Aosu-Client? (2) Könnte dasselbe Stück auch die Grundlage einer breiteren Open-Source-Tuya-Kameraplattform sein? Wo beides mit vertretbarem Mehraufwand möglich ist, wird die generischere Variante gewählt — siehe `docs/ecosystem-integration.md` für die konkreten Konsequenzen (eigenständige `tuya-lan-protocol`-Crate, erweiterbare Transport-Registry statt geschlossenem Enum, geplante Integrationspunkte zu go2rtc/Frigate/Scrypted).
+
 Grundsatz unverändert: Ein Transport gilt erst als „unterstützt", wenn er validiert ist. Jede Schicht unten trennt **belegt** (direkt beobachtet) von **vermutet** (abgeleitet) und **unbekannt**.
 
 ## 1. Desktop-Anwendungsarchitektur
