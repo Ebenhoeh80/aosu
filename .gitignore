@@ -6,3 +6,15 @@ __pycache__/
 .pytest_cache/
 PROJECT_CHARTER.md
 project-start.mc
+
+# Rust
+/target/
+crates/*/target/
+
+# Node / frontend
+app/node_modules/
+app/dist/
+app/src-tauri/target/
+app/test-results/
+app/playwright-report/
+app/.vite/

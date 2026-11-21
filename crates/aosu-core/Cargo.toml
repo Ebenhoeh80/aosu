@@ -1,0 +1,16 @@
+[package]
+name = "aosu-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Transport-agnostic core for an Aosu/H1L desktop client: device model, Transport trait, mock/local/cloud transport skeletons, diagnostics."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tracing = "0.1"
+crc32fast = "1"
+
+[dev-dependencies]
+proptest = "1"
