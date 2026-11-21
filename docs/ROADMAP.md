@@ -23,6 +23,11 @@ Siehe `docs/architecture.md` für die Begründung der Phaseneinteilung (gebaut n
 - [ ] Echte `LocalTransport`-Authentifizierung — blockiert durch fehlenden `local_key`-Beschaffungsweg.
 - [ ] Echte `CloudTransport`-Authentifizierung — blockiert durch offenes, nicht freigegebenes Pinning-Experiment.
 
+## Sicherheitsprüfungen (Stand 2026-11-21)
+
+- `npm audit`: 0 Schwachstellen (nach Upgrade von vite/vitest/@vitejs/plugin-react, siehe Commit-Historie).
+- `cargo audit`: 0 Schwachstellen (CVE-Ebene). 3 Hinweise auf unmaintained/unsound transitive Abhängigkeiten von Tauri/wry selbst (`chrono`, `proc-macro-error`, `glib`), kein Fix stromaufwärts verfügbar — außerhalb unserer Kontrolle, in CI als Information mitlaufend.
+
 ## Bekannte Blocker
 
 | Blocker | Auswirkung | Workaround |
