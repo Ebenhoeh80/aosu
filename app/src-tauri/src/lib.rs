@@ -12,6 +12,7 @@ pub fn run() {
             commands::list_notifications,
             commands::acknowledge_notification,
             commands::run_network_diagnostics,
+            commands::capability_report,
             commands::list_available_transports,
             commands::active_transport,
             commands::switch_transport,

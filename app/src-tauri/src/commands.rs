@@ -186,6 +186,15 @@ pub fn list_available_transports(state: State<AppState>) -> Vec<String> {
 }
 
 #[tauri::command]
+pub fn capability_report(state: State<AppState>) -> Result<aosu_core::CapabilityReport, String> {
+    state
+        .transport
+        .lock()
+        .map(|t| t.capability_report())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn active_transport(state: State<AppState>) -> Result<String, String> {
     state
         .active_transport_name
