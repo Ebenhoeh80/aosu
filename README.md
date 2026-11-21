@@ -2,19 +2,27 @@
 
 Unabhängiges Open-Source-Projekt (MIT-Lizenz) mit dem Ziel eines Linux- und Windows-Desktop-Clients für Aosu-Kameras. Nicht mit Aosu/Glazero verbunden. Es werden weder Quellcode, Grafiken noch Marken der Original-App verwendet.
 
-## Status: Forschungsphase, kein lauffähiger Client
+## Status
 
-Es gibt bewusst noch keinen Client. Nach der Analyse ist keine Schnittstelle validiert, auf der sich ein Client ohne Spekulation bauen ließe:
+Lauffähiges **Projektgerüst** mit Mock-Daten; **kein echter Transport zur Kamera/Cloud ist authentifiziert.** Das ist Absicht, kein Versehen — siehe `docs/adr-0002-path-reassessment.md` für die offenen, bewusst nicht gelösten Engpässe.
 
-- Die App nutzt das Tuya-SDK mit einer **eigenen Glazero-Cloud**. Die öffentlichen Tuya-Wege (Smart Life, go2rtc Smart API) sind für Aosu sehr wahrscheinlich nicht nutzbar.
-- Im Test lief das Livebild ohne LAN-Verkehr zur Kamera oder Basisstation (H1L) über Cloud-Verbindungen.
-- Ob die H1L eine lokale Schnittstelle anbietet, ist offen und nur an ihrem Standort prüfbar.
+- Nach der Analyse ist keine Schnittstelle validiert, auf der sich ein echter Client ohne offene Rechts-/Protokollfragen bauen ließe. Die App nutzt das Tuya-SDK mit einer eigenen Glazero-Cloud; der öffentliche Tuya-Weg (Smart Life, go2rtc) greift für Aosu nicht.
+- Ein echter Port der Basisstation (H1L, TCP 6668, Tuya-Standardprotokoll) ist erreichbar, aber ohne Authentifizierungsschlüssel nicht nutzbar.
+- Strategie und Entscheidungsverlauf: `docs/adr-0001-client-strategy.md`, `docs/adr-0002-path-reassessment.md`. Architektur: `docs/architecture.md`. Fortschritt: `docs/ROADMAP.md`.
 
-Strategie: [`docs/adr-0001-client-strategy.md`](docs/adr-0001-client-strategy.md). Kurz: kein nachgebauter Cloud-Client, sondern eine "Aosu Bridge" aus legalen Bausteinen (Ereignisse über die Push-Benachrichtigungen der offiziellen App, offizielle Anfrage an den Hersteller, lokale Prüfung der Basisstation).
+## Was heute funktioniert
 
-Ergebnisse: [`docs/apk-findings.md`](docs/apk-findings.md), [`docs/recommendation-report.md`](docs/recommendation-report.md), Zielarchitektur: [`docs/architecture.md`](docs/architecture.md).
+| Teil | Pfad | Stand |
+|---|---|---|
+| Rust-Kern (`Transport`-Trait, Capability-Modell, Diagnose) | `crates/aosu-core` | 17/17 Tests grün |
+| Desktop-App (Tauri + React) | `app/` | 10/10 Vitest, 2/2 Playwright, zeigt Demo-Geräte |
+| Home-Assistant-Integration (Gerüst) | `homeassistant/custom_components/aosu` | 3 Tests grün, Demo-Entitäten |
+| Push-Benachrichtigungs-Brücke | `tools/notification_bridge.py` | 6 Tests grün, noch nicht an echte Ereignisse angeschlossen |
+| Passive LAN-Diagnose | `tools/lan_probe.py` | 4 Tests grün, über die UI erreichbar |
 
-## Mitmachen: LAN-Prüfung der Basisstation
+Siehe jeweiliges `README.md` in `app/` und `homeassistant/` für Entwicklungsbefehle.
+
+## Mitmachen: LAN-Prüfung der eigenen Basisstation
 
 Wenn Sie eine H1L im eigenen Netz haben, hilft ein passiver Test (nur Mitlesen und Port-Check, keine Anmeldung, keine Cloud):
 
