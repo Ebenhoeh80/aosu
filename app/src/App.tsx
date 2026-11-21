@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { DeviceList } from "./DeviceList";
 import { CapabilityPanel } from "./CapabilityPanel";
+import { NetworkDiagnostics } from "./NetworkDiagnostics";
 import { mockCapabilityReport, mockDevices } from "./mockData";
 
 type Tab = "devices" | "diagnostics";
@@ -33,7 +34,11 @@ export function App() {
       {tab === "devices" ? (
         <DeviceList devices={devices} />
       ) : (
-        <CapabilityPanel report={report} />
+        <>
+          <CapabilityPanel report={report} />
+          <hr className="my-4" />
+          <NetworkDiagnostics />
+        </>
       )}
     </main>
   );
