@@ -1,0 +1,8 @@
+*.xapk
+*.apk
+*.png
+*.xml
+__pycache__/
+.pytest_cache/
+PROJECT_CHARTER.md
+project-start.mc
