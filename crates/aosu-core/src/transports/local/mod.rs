@@ -143,6 +143,7 @@ impl Transport for LocalTransport {
         }
         r.set(Capability::Discover, Support::Unknown);
         r.set(Capability::Events, Support::Unsupported);
+        r.set(Capability::Notifications, Support::Unsupported);
         r.set(Capability::TwoWayAudio, Support::Unsupported);
         r.set(Capability::Recordings, Support::Unsupported);
         r.set(Capability::Ptz, Support::Unsupported);

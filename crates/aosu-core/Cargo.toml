@@ -9,3 +9,6 @@ description = "Transport-agnostic core for an Aosu/H1L desktop client: device mo
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
 tuya-lan-protocol = { path = "../tuya-lan-protocol" }
+
+[dev-dependencies]
+serde_json = "1"

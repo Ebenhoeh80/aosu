@@ -17,6 +17,7 @@ use crate::transport::Transport;
 use crate::transports::cloud::CloudTransport;
 use crate::transports::local::LocalTransport;
 use crate::transports::mock::MockTransport;
+use crate::transports::vendor2_mock::Vendor2MockTransport;
 use std::collections::HashMap;
 
 pub type TransportFactory = Box<dyn Fn(&TransportConfig) -> Box<dyn Transport> + Send + Sync>;
@@ -59,6 +60,13 @@ impl TransportRegistry {
         r.register("cloud", |_cfg| {
             Box::new(CloudTransport::default()) as Box<dyn Transport>
         });
+        // Fictional second vendor, registered the same way a real
+        // third-party crate would -- proves the registry genuinely
+        // supports more than one vendor, not just "mock" by name. See
+        // transports::vendor2_mock for why it's deliberately fictional.
+        r.register("kestrel-mock", |_cfg| {
+            Box::new(Vendor2MockTransport::default()) as Box<dyn Transport>
+        });
         r
     }
 
@@ -94,7 +102,7 @@ mod tests {
         let r = TransportRegistry::with_builtins();
         let mut names = r.names();
         names.sort();
-        assert_eq!(names, vec!["cloud", "local", "mock"]);
+        assert_eq!(names, vec!["cloud", "kestrel-mock", "local", "mock"]);
     }
 
     #[test]

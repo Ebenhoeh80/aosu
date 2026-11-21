@@ -58,6 +58,38 @@ fn resolve(host: &str, port: u16) -> Option<SocketAddr> {
 
 pub const DEFAULT_PROBE_PORTS: &[u16] = &[80, 443, 554, 6668, 8000, 8080, 8554, 8883, 8899];
 
+/// Everything the "Diagnostics Center" exports in one shot: capability
+/// report, an optional network scan, and basic runtime/environment
+/// facts. Deliberately contains nothing from `NEVER_LOG_FIELDS` -- there
+/// is no field here that could, since this crate never holds a
+/// credential or key in the first place (see ADR 0002).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiagnosticsBundle {
+    pub generated_at_epoch_seconds: u64,
+    pub app_version: String,
+    pub os: String,
+    pub arch: String,
+    pub active_transport: String,
+    pub capability_report: crate::capability::CapabilityReport,
+    pub network: Option<NetworkDiagnostics>,
+}
+
+pub fn build_bundle(
+    active_transport: &str,
+    capability_report: crate::capability::CapabilityReport,
+    network: Option<NetworkDiagnostics>,
+) -> DiagnosticsBundle {
+    DiagnosticsBundle {
+        generated_at_epoch_seconds: crate::device::Timestamp::now().0,
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+        os: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+        active_transport: active_transport.to_string(),
+        capability_report,
+        network,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,5 +125,14 @@ mod tests {
         // Port 1 is reserved/unlikely to be listening in any test env.
         let result = scan_ports("127.0.0.1", &[1], Duration::from_millis(200));
         assert!(!result.ports[0].open);
+    }
+
+    #[test]
+    fn bundle_round_trips_through_json_without_a_network_scan() {
+        let bundle = build_bundle("mock", crate::capability::CapabilityReport::new(), None);
+        let json = serde_json::to_string(&bundle).unwrap();
+        assert!(json.contains("\"active_transport\":\"mock\""));
+        let back: DiagnosticsBundle = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.active_transport, "mock");
     }
 }

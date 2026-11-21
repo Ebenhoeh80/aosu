@@ -83,6 +83,7 @@ impl Transport for CloudTransport {
             Capability::DeviceList,
             Capability::DeviceStatus,
             Capability::Events,
+            Capability::Notifications,
             Capability::LiveVideo,
             Capability::TwoWayAudio,
             Capability::Recordings,

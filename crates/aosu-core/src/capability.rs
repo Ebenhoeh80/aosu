@@ -11,6 +11,7 @@ pub enum Capability {
     DeviceList,
     DeviceStatus,
     Events,
+    Notifications,
     LiveVideo,
     TwoWayAudio,
     Ptz,
