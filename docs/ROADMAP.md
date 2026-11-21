@@ -40,6 +40,7 @@ Ziel: vollständige Nutzerreise gegen Mock-Geräte, unabhängig vom Ausgang von 
 - [x] **Fehlerbehandlung**: `ErrorNotice`-Komponente (Erklärung + wahrscheinliche Ursache + Vorschlag) statt roher Fehlermeldungen.
 - [x] **Mock-Ökosystem erweitert**: 6 Geräte über alle Health-Zustände (Healthy/Degraded/Offline/Unsupported/PartiallySupported), simulierbarer Netzwerkausfall (`MockTransport::simulate_network_failure`).
 - [x] **Multi-Vendor-Validierung**: zweiter, bewusst fiktiver Hersteller „Kestrel Labs" (`crates/aosu-core/src/transports/vendor2_mock.rs`), eigenständig implementiert, über die Registry als `kestrel-mock` erreichbar — beweist die Architekturgrenze ohne echtes zweites Gerät.
+- [x] **Echter installierbarer Windows-Build verifiziert**: `npx tauri build` erzeugt sowohl ein MSI (`aosu-desktop_0.1.0_x64_en-US.msi`, 5,7 MB) als auch ein NSIS-Setup (`aosu-desktop_0.1.0_x64-setup.exe`, 3,7 MB), lokal über den GNU-Toolchain-Workaround gebaut. Damit ist „installieren und ausprobieren ohne Entwicklungsumgebung" real möglich, nicht nur `npm run dev`.
 - [ ] Barrierefreiheit: Baseline vorhanden (semantische Rollen, `aria-label`, tastaturbedienbare Tabs/Buttons), kein systematischer Screenreader-/Kontrast-Audit.
 - [ ] Zuordnung einzelner Geräte zu einem eigenen Transport (aktuell: ein globaler aktiver Transport für die ganze App).
 
