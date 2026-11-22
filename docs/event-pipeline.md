@@ -32,7 +32,7 @@ Die letzten drei (`TamperDetected`, `BatteryLow`, `IntercomCall`) sind Ergänzun
 
 ## Nie verworfene Rohdaten
 
-Jedes normalisierte Ereignis trägt den vollständigen Rohblock (Kanal, Titel, Text, `key`, Zeitstempel) in `metadata`/`raw`. Unbekannte Kanäle oder Textmuster erzeugen `UnknownVendorEvent`, nie ein verworfenes Ereignis.
+Die Python-Normalisierung (`tools/event_pipeline.py`) und der persistente Store (`StoredEvent.raw_json`) tragen den vollständigen Rohblock (Kanal, Titel, Text, `key`, Zeitstempel). Das Rust-`Event` aus `crates/aosu-core/src/notification_pipeline.rs` enthält dagegen nur ausgewählte Metadaten (`channel`, `raw_text`, `confidence`, `classification_note`, `event_id`) — der vollständige Rohblock bleibt in der JSONL-Datei bzw. im Store erhalten. Unbekannte Kanäle oder Textmuster erzeugen `UnknownVendorEvent`, nie ein verworfenes Ereignis.
 
 ## Integrationspunkt: JSONL-Datei
 

@@ -1,8 +1,10 @@
 """Unofficial Aosu integration.
 
-Status: scaffold only. Backed by the Mock transport (see mock_backend.py)
-so the full entity model is installable and testable today. Real local
-(H1L) and cloud transports are intentionally not implemented -- see
+Status: full entity model plus a real notification-bridge path. The default
+backend is mock (see mock_backend.py), so the entity model is installable
+and testable without hardware. In notification-bridge mode, binary_sensor.py
+creates real motion/tamper sensors from the JSONL push log. Real local (H1L)
+and cloud transports remain unimplemented -- see
 docs/adr-0002-path-reassessment.md for the open blockers.
 """
 from __future__ import annotations

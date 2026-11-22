@@ -1,6 +1,8 @@
 # Empfehlungsbericht: Open-Source-Desktop-Ersatz für Aosu (com.glazero.android 5.11.20)
 
-Stand: 2026-11-21 · Status: Entwurf, vor Implementierung · Quellen: APK-Inventar (REA 6.10.1), zwei Recherche-Worker (Websuche, teils nur Suchsnippets)
+> ⚠ Veraltet (2026-11-22): Die Empfehlung wurde durch ADR 0002 und den implementierten Code überholt. Maßgeblich ist `docs/adr-0002-path-reassessment.md` (Weg A „Push-Ereignisse" primär, `smart-aosu-cloud` zurückgestellt). Dieses Dokument bleibt als historischer Entwurf erhalten.
+
+Stand: 2026-11-21 · Status: veraltet (Entwurf, vor Implementierung) · Quellen: APK-Inventar (REA 6.10.1), zwei Recherche-Worker (Websuche, teils nur Suchsnippets)
 
 ## 1. Belegte Fakten
 

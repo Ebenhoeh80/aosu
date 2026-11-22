@@ -14,17 +14,17 @@ Die Anwendung ist **vollständig nutzbar ohne jede echte Kamera, ohne Cloud-Kont
 4. **Ereignisverlauf** mit Zeitachse, Schweregrad-Filter, Suche.
 5. **Benachrichtigungs-Center**: als gelesen markieren, nach Schweregrad filtern.
 6. **Diagnose-Center**: Fähigkeits-Report, Netzwerk-Port-Scan, Export als JSON.
-7. **Einstellungen**: zwischen den registrierten Transporten wechseln (`mock`, `kestrel-mock`, `local`, `cloud`).
+7. **Einstellungen**: zwischen den registrierten Transporten wechseln (`mock`, `kestrel-mock`, `local`, `cloud`, `push-log`). `push-log` liest echte Push-Aufzeichnungen aus einer JSONL-Datei und liefert daraus Ereignisse, Geräteaktivität, Analytics und Export.
 
 ## Was heute funktioniert
 
-| Teil | Pfad | Stand |
+| Teil | Pfad | Stand (geprüft 2026-11-22) |
 |---|---|---|
-| Rust-Kern (`Transport`-Trait, Capability-Modell, Diagnose, Registry) | `crates/aosu-core` | 31/31 Tests grün |
+| Rust-Kern (`Transport`-Trait, Capability-Modell, Diagnose, Registry, Event-Store) | `crates/aosu-core` | 76/76 Tests grün (75 Unit + 1 E2E mit echter Aufzeichnung) |
 | Wiederverwendbares Tuya-LAN-Protokoll | `crates/tuya-lan-protocol` | 5/5 Tests grün, markenunabhängig |
-| Desktop-App (Tauri + React), volle Produktoberfläche | `app/` | 41/41 Vitest, 6/6 Playwright |
-| Home-Assistant-Integration (Gerüst) | `homeassistant/custom_components/aosu` | 16/16 Tests grün |
-| Push-Benachrichtigungs-Brücke | `tools/notification_bridge.py` | 6/6 Tests grün |
+| Desktop-App (Tauri + React), volle Produktoberfläche | `app/` | 50/50 Vitest, 7/7 Playwright |
+| Home-Assistant-Integration (Modell + Notification-Bridge) | `homeassistant/custom_components/aosu` | 12/12 Tests grün |
+| Push-Brücke, Event-Pipeline und Store | `tools/notification_bridge.py`, `tools/event_pipeline.py`, `tools/event_store.py` | 44/44 Tests grün (14 Brücke, 16 Pipeline, 10 Store, 4 LAN-Probe) |
 | Passive LAN-Diagnose | `tools/lan_probe.py` | über die UI erreichbar |
 
 Siehe jeweiliges `README.md` in `app/` und `homeassistant/` für Entwicklungsbefehle, `docs/ROADMAP.md` für den Fortschritt, `docs/ecosystem-integration.md` für die Plattform-Architektur.

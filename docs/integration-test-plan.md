@@ -1,6 +1,8 @@
 # Test- und Einsatzplan: smart-aosu-cloud (Stand 2026-11-21)
 
-Entscheidung: Wiederverwendung vor Eigenentwicklung (ADR 0001). Kein eigener Client, solange `tapion69/smart-aosu-cloud` den Bedarf abdecken kann.
+> ⚠ Veraltet (2026-11-22): „Kein eigener Client, solange `smart-aosu-cloud` den Bedarf abdecken kann" ist durch ADR 0002 überholt. `smart-aosu-cloud` wurde zurückgestellt (Extraktion derselben App-Geheimnisse, PolyForm Strict), der eigene Client ist implementiert. Maßgeblich ist `docs/adr-0002-path-reassessment.md`.
+
+Entscheidung (historisch, 2026-11-21): Wiederverwendung vor Eigenentwicklung (ADR 0001). Kein eigener Client, solange `tapion69/smart-aosu-cloud` den Bedarf abdecken kann.
 
 ## Befund zur Nutzbarkeit
 
