@@ -100,6 +100,7 @@ impl Default for MockTransport {
                 severity: EventKind::Motion.default_severity(),
                 at: now,
                 thumbnail_url: None,
+                metadata: Default::default(),
             },
             Event {
                 device: DeviceId("mock-cam-2".into()),
@@ -107,6 +108,7 @@ impl Default for MockTransport {
                 severity: EventKind::LowBattery.default_severity(),
                 at: now,
                 thumbnail_url: None,
+                metadata: Default::default(),
             },
             Event {
                 device: DeviceId("mock-cam-3".into()),
@@ -114,6 +116,7 @@ impl Default for MockTransport {
                 severity: EventKind::Connectivity.default_severity(),
                 at: now,
                 thumbnail_url: None,
+                metadata: Default::default(),
             },
             Event {
                 device: DeviceId("mock-base".into()),
@@ -121,6 +124,7 @@ impl Default for MockTransport {
                 severity: EventKind::System.default_severity(),
                 at: now,
                 thumbnail_url: None,
+                metadata: Default::default(),
             },
         ];
         Self {

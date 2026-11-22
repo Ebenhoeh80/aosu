@@ -17,6 +17,7 @@ use crate::transport::Transport;
 use crate::transports::cloud::CloudTransport;
 use crate::transports::local::LocalTransport;
 use crate::transports::mock::MockTransport;
+use crate::transports::notification_log::NotificationLogTransport;
 use crate::transports::vendor2_mock::Vendor2MockTransport;
 use std::collections::HashMap;
 
@@ -38,7 +39,20 @@ impl TransportConfig {
             options: HashMap::new(),
         }
     }
+
+    pub fn with_option(key: impl Into<String>, value: impl Into<String>) -> Self {
+        let mut options = HashMap::new();
+        options.insert(key.into(), value.into());
+        Self {
+            host: None,
+            options,
+        }
+    }
 }
+
+/// Where `push-log` looks for the JSONL file if the caller didn't
+/// configure `options["path"]` -- see docs/event-pipeline.md.
+pub const DEFAULT_PUSH_LOG_PATH: &str = "aosu-events.jsonl";
 
 pub struct TransportRegistry {
     factories: HashMap<String, TransportFactory>,
@@ -66,6 +80,14 @@ impl TransportRegistry {
         // transports::vendor2_mock for why it's deliberately fictional.
         r.register("kestrel-mock", |_cfg| {
             Box::new(Vendor2MockTransport::default()) as Box<dyn Transport>
+        });
+        r.register("push-log", |cfg| {
+            let path = cfg
+                .options
+                .get("path")
+                .cloned()
+                .unwrap_or_else(|| DEFAULT_PUSH_LOG_PATH.to_string());
+            Box::new(NotificationLogTransport::new(path)) as Box<dyn Transport>
         });
         r
     }
@@ -102,7 +124,10 @@ mod tests {
         let r = TransportRegistry::with_builtins();
         let mut names = r.names();
         names.sort();
-        assert_eq!(names, vec!["cloud", "kestrel-mock", "local", "mock"]);
+        assert_eq!(
+            names,
+            vec!["cloud", "kestrel-mock", "local", "mock", "push-log"]
+        );
     }
 
     #[test]

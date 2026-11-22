@@ -7,6 +7,7 @@ export function Settings() {
   const [active, setActive] = useState<string>("");
   const [switching, setSwitching] = useState(false);
   const [error, setError] = useState<{ target: string; message: string } | null>(null);
+  const [pushLogPath, setPushLogPath] = useState("aosu-events.jsonl");
   const [verboseLogging, setVerboseLogging] = useState(
     () => localStorage.getItem("aosu.verboseLogging") === "true",
   );
@@ -20,7 +21,7 @@ export function Settings() {
     setSwitching(true);
     setError(null);
     try {
-      await api.switchTransport(name);
+      await api.switchTransport(name, undefined, name === "push-log" ? pushLogPath : undefined);
       setActive(name);
     } catch (e) {
       setError({ target: name, message: String(e) });
@@ -67,6 +68,20 @@ export function Settings() {
               explanation={`Transport "${error.target}" konnte nicht aktiviert werden (${error.message}).`}
               probableCause="Der Transport ist registriert, aber (noch) nicht authentifiziert -- siehe Diagnose-Center für Details."
               suggestedAction="Bei mock/kestrel-mock sollte das nie passieren; bei local/cloud ist das aktuell erwartet (siehe docs/adr-0002-path-reassessment.md)."
+            />
+          </div>
+        )}
+        {transports.includes("push-log") && (
+          <div className="mt-3">
+            <label className="block text-xs text-gray-500 mb-1" htmlFor="push-log-path">
+              Pfad zur JSONL-Datei für „push-log" (siehe{" "}
+              <code>tools/notification_bridge.py --jsonl-out</code>)
+            </label>
+            <input
+              id="push-log-path"
+              className="border rounded px-2 py-1 w-full"
+              value={pushLogPath}
+              onChange={(e) => setPushLogPath(e.target.value)}
             />
           </div>
         )}

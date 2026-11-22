@@ -57,8 +57,8 @@ export const api = {
   activeTransport: (): Promise<string> =>
     callOrMock("active_transport", undefined, () => "mock"),
 
-  switchTransport: (name: string, host?: string): Promise<void> =>
-    callOrMock("switch_transport", { name, host }, () => {}),
+  switchTransport: (name: string, host?: string, path?: string): Promise<void> =>
+    callOrMock("switch_transport", { name, host, path }, () => {}),
 
   exportDiagnostics: (networkHost?: string): Promise<string> =>
     callOrMock("export_diagnostics", { networkHost }, () =>

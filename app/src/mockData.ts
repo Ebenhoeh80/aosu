@@ -107,9 +107,13 @@ export function mockDevices(): Device[] {
 const now = Math.floor(Date.now() / 1000);
 
 export function mockEvents(): DeviceEvent[] {
+  // Uses the same canonical wire vocabulary aosu-core's EventKind::wire_name()
+  // produces for real Tauri calls (see docs/event-pipeline.md), so the
+  // UI behaves identically whether data came from the real backend or
+  // this offline fallback.
   return [
-    { device: "mock-cam-1", kind: "Motion", severity: "Info", atEpochSeconds: now - 60 },
-    { device: "mock-cam-2", kind: "LowBattery", severity: "Warning", atEpochSeconds: now - 300 },
+    { device: "mock-cam-1", kind: "MotionDetected", severity: "Info", atEpochSeconds: now - 60 },
+    { device: "mock-cam-2", kind: "BatteryLow", severity: "Warning", atEpochSeconds: now - 300 },
     {
       device: "mock-cam-3",
       kind: "Connectivity",
@@ -117,7 +121,7 @@ export function mockEvents(): DeviceEvent[] {
       atEpochSeconds: now - 900,
     },
     { device: "mock-base", kind: "System", severity: "Info", atEpochSeconds: now - 1800 },
-    { device: "mock-cam-1", kind: "Person", severity: "Info", atEpochSeconds: now - 3600 },
+    { device: "mock-cam-1", kind: "HumanDetected", severity: "Info", atEpochSeconds: now - 3600 },
   ];
 }
 

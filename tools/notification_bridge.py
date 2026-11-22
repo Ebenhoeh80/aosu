@@ -179,16 +179,39 @@ def print_sink(event: BridgeEvent) -> None:
     print(json.dumps(asdict(event)))
 
 
+def make_jsonl_sink(path: str) -> Callable[[BridgeEvent], None]:
+    """Appends one normalized event (see event_pipeline.py) per line --
+    the shared integration point for Home Assistant and the desktop app,
+    see docs/event-pipeline.md. Import is local to avoid a hard
+    dependency for callers that only want raw BridgeEvents.
+    """
+    from event_pipeline import normalize
+
+    def sink(event: BridgeEvent) -> None:
+        normalized = normalize(event)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(normalized.to_json() + "\n")
+
+    return sink
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--device", required=True, help="adb device serial")
     ap.add_argument("--interval", type=float, default=15.0)
     ap.add_argument("--once", action="store_true", help="poll a single time and exit")
+    ap.add_argument(
+        "--jsonl-out",
+        help="append normalized events (event_pipeline.py) to this file, "
+        "one JSON object per line -- read by Home Assistant and/or the "
+        "desktop app's push-log transport (see docs/event-pipeline.md)",
+    )
     args = ap.parse_args()
+    sink = make_jsonl_sink(args.jsonl_out) if args.jsonl_out else print_sink
     run(
         args.device,
         args.interval,
-        print_sink,
+        sink,
         max_iterations=1 if args.once else None,
     )
 

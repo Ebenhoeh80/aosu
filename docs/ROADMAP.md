@@ -25,6 +25,20 @@ Siehe `docs/architecture.md` für die Begründung der Phaseneinteilung (gebaut n
 - [ ] Echte `LocalTransport`-Authentifizierung — blockiert durch fehlenden `local_key`-Beschaffungsweg.
 - [ ] Echte `CloudTransport`-Authentifizierung — blockiert durch offenes, nicht freigegebenes Pinning-Experiment.
 
+## Event-Pipeline (abgeschlossen, 2026-11-22)
+
+Erste reale Push-Benachrichtigung einer Aosu-Kamera empfangen und zu einer vollständigen, in zwei Sprachen parallel verifizierten Normalisierungs-Pipeline ausgebaut — siehe `docs/event-pipeline.md` für die Zuordnungstabelle und den Korrekturbefund (Kanalname sagt nicht zuverlässig den Inhalt voraus).
+
+- [x] `tools/event_pipeline.py`: normalisiertes Ereignis-Vokabular (`MotionDetected`…`UnknownVendorEvent`), textbasierte Klassifikation mit Konfidenzstufe, Rohdaten nie verworfen — 16 Tests.
+- [x] `crates/aosu-core/src/notification_pipeline.rs`: dieselben Regeln in Rust, Paritätstests gegen dieselben Fälle — 11 Tests.
+- [x] `EventKind` um `Vehicle`, `Package`, `IntercomCall` erweitert; `wire_name()` übersetzt in das kanonische Vokabular für alles Konsumentenseitige.
+- [x] `Event.metadata`: Rohdaten/Konfidenz/Klassifikationsnotiz, nie verworfen, auch im Rust-Modell.
+- [x] **Echter End-to-End-Beweis**: `crates/aosu-core/tests/real_data.rs` liest eine anonymisierte, aber sonst unveränderte echte Aufzeichnung; dieselbe Datei testet auch die Python-Seite (`tests/test_ha_push_log_backend.py`).
+- [x] `NotificationLogTransport` (Registry-Name `push-log`): liest die JSONL-Datei, wählbar in den Desktop-Einstellungen (Pfadfeld erscheint automatisch).
+- [x] Home-Assistant-Modus „Notification-Bridge": `binary_sensor.py` erzeugt pro beobachteter Kamera Bewegungs- und Manipulations-Sensoren aus derselben Datei — der erste mit echten Daten funktionierende HA-Pfad, nicht nur Mock.
+- [ ] Bekannte Lücke: HA liest per Polling, kein echter Push von der Datei in HA hinein.
+- [ ] Noch unbeobachtet: ob andere Kanäle (`lowpower.v2`, `dismantle.v2`, `call.v2`) ebenfalls den Kameranamen im Text tragen, und ob spezifischere Schlüsselwörter (Person/Fahrzeug/Paket) je in der Praxis auftreten.
+
 ## Produktentwicklungsphase (parallel zu Phase 2, nicht davon blockiert)
 
 Ziel: vollständige Nutzerreise gegen Mock-Geräte, unabhängig vom Ausgang von Phase 2.

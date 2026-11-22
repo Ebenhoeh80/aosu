@@ -4,6 +4,7 @@
 pub mod capability;
 pub mod device;
 pub mod diagnostics;
+pub mod notification_pipeline;
 pub mod registry;
 pub mod transport;
 pub mod transports;
@@ -11,5 +12,6 @@ pub mod transports;
 pub use capability::{BlockedReason, Capability, CapabilityReport, Support};
 pub use device::*;
 pub use diagnostics::{build_bundle, scan_ports, DiagnosticsBundle, DEFAULT_PROBE_PORTS};
+pub use notification_pipeline::{normalize, RawNotification};
 pub use registry::{TransportConfig, TransportRegistry};
 pub use transport::{Result, Transport, TransportError};

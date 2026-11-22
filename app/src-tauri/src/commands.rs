@@ -90,7 +90,7 @@ impl From<Event> for EventDto {
     fn from(e: Event) -> Self {
         Self {
             device: e.device.0,
-            kind: format!("{:?}", e.kind),
+            kind: e.kind.wire_name(),
             severity: format!("{:?}", e.severity),
             at_epoch_seconds: e.at.0,
         }
@@ -208,10 +208,12 @@ pub fn switch_transport(
     state: State<AppState>,
     name: String,
     host: Option<String>,
+    path: Option<String>,
 ) -> Result<(), String> {
-    let config = match host {
-        Some(h) => TransportConfig::with_host(h),
-        None => TransportConfig::default(),
+    let config = match (host, path) {
+        (Some(h), _) => TransportConfig::with_host(h),
+        (None, Some(p)) => TransportConfig::with_option("path", p),
+        (None, None) => TransportConfig::default(),
     };
     let built = state
         .registry

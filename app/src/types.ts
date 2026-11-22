@@ -27,15 +27,23 @@ export interface Device {
 
 export type Severity = "Info" | "Warning" | "Critical";
 
+// Canonical normalized-event vocabulary, see docs/event-pipeline.md.
+// Matches aosu-core's EventKind::wire_name() -- the wire format always
+// uses these names, even though Rust's own enum variants are named
+// more tersely (Motion, Person, ...) by Rust convention.
 export type EventKind =
-  | "Motion"
-  | "Person"
-  | "Doorbell"
-  | "LowBattery"
-  | "Tamper"
+  | "MotionDetected"
+  | "HumanDetected"
+  | "VehicleDetected"
+  | "PackageDetected"
+  | "DoorbellPressed"
+  | "BatteryLow"
+  | "TamperDetected"
+  | "IntercomCall"
   | "System"
   | "Connectivity"
   | "Diagnostic"
+  | "UnknownVendorEvent"
   | string;
 
 export interface DeviceEvent {
