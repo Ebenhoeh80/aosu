@@ -7,7 +7,14 @@ use crate::device::{
     AudioChannelHandle, Command, Device, DeviceId, Event, MediaStreamHandle, Notification,
     Recording, TimeRange, Timestamp,
 };
+use crate::event_store::{DeviceActivity, EventAnalytics, EventQuery, StoredEvent};
 use thiserror::Error;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExportFormat {
+    Json,
+    Csv,
+}
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum TransportError {
@@ -57,4 +64,39 @@ pub trait Transport: Send + Sync {
     fn command(&self, device: &DeviceId, cmd: Command) -> Result<()>;
 
     fn capability_report(&self) -> CapabilityReport;
+
+    // -- Event Platform: persistent storage/query/analytics/export/
+    // retention. Defaults to `Unsupported` for every transport that
+    // doesn't have a durable event store (most of them) -- only
+    // `NotificationLogTransport` overrides these today. Kept as trait
+    // methods (not a separate "if let Some(store) = ..." API) so the
+    // Mutex-guarded access each concrete transport needs stays fully
+    // encapsulated; callers never see a lock guard or a concrete store
+    // type, only `dyn Transport`.
+
+    fn query_events(&self, _query: &EventQuery) -> Result<Vec<StoredEvent>> {
+        Err(TransportError::Unsupported)
+    }
+
+    fn event_analytics(&self, _now_ms: i64) -> Result<EventAnalytics> {
+        Err(TransportError::Unsupported)
+    }
+
+    fn device_activity(&self) -> Result<Vec<DeviceActivity>> {
+        Err(TransportError::Unsupported)
+    }
+
+    fn export_events(&self, _query: &EventQuery, _format: ExportFormat) -> Result<String> {
+        Err(TransportError::Unsupported)
+    }
+
+    /// Returns the number of rows deleted.
+    fn apply_event_retention(
+        &self,
+        _now_ms: i64,
+        _max_age_days: Option<u32>,
+        _max_rows: Option<i64>,
+    ) -> Result<i64> {
+        Err(TransportError::Unsupported)
+    }
 }

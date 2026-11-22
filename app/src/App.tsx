@@ -9,17 +9,25 @@ import type {
 import { DeviceInventory } from "./DeviceInventory";
 import { DeviceDetail } from "./DeviceDetail";
 import { EventHistory } from "./EventHistory";
+import { EventPlatform } from "./EventPlatform";
 import { NotificationCenter } from "./NotificationCenter";
 import { DiagnosticsCenter } from "./DiagnosticsCenter";
 import { Settings } from "./Settings";
 import { Onboarding, hasCompletedOnboarding } from "./Onboarding";
 import { ErrorNotice } from "./ErrorNotice";
 
-type Tab = "devices" | "events" | "notifications" | "diagnostics" | "settings";
+type Tab =
+  | "devices"
+  | "events"
+  | "event-platform"
+  | "notifications"
+  | "diagnostics"
+  | "settings";
 
 const NAV: { key: Tab; label: string }[] = [
   { key: "devices", label: "Geräte" },
   { key: "events", label: "Ereignisse" },
+  { key: "event-platform", label: "Event-Plattform" },
   { key: "notifications", label: "Benachrichtigungen" },
   { key: "diagnostics", label: "Diagnose" },
   { key: "settings", label: "Einstellungen" },
@@ -130,6 +138,8 @@ export function App() {
         ))}
 
       {tab === "events" && <EventHistory events={events} />}
+
+      {tab === "event-platform" && <EventPlatform />}
 
       {tab === "notifications" && (
         <NotificationCenter notifications={notifications} onAcknowledge={handleAcknowledge} />

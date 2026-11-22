@@ -48,3 +48,11 @@ test("settings tab lists available transports including the fictional second ven
   await page.getByRole("tab", { name: "Einstellungen" }).click();
   await expect(page.getByRole("button", { name: "kestrel-mock" })).toBeVisible();
 });
+
+test("event platform honestly reports it is unsupported for the mock transport", async ({
+  page,
+}) => {
+  await page.getByRole("tab", { name: "Event-Plattform" }).click();
+  await expect(page.getByText(/Event-Plattform-Daten konnten nicht geladen werden/)).toBeVisible();
+  await expect(page.getByText(/nur für den Transport "push-log"/)).toBeVisible();
+});

@@ -46,3 +46,32 @@ Jedes normalisierte Ereignis trägt den vollständigen Rohblock (Kanal, Titel, T
 
 - `tools/event_pipeline.py::normalize()` und `crates/aosu-core/src/notification_pipeline.rs::normalize()` sind unabhängig gegen dieselben Testfälle verifiziert (gleiche Kanäle, gleiche Schlüsselwörter, gleiche Konfidenzstufen).
 - `crates/aosu-core/tests/real_data.rs` liest eine **echte, nur im Kameranamen anonymisierte** Aufzeichnung (`tests/fixtures/real_capture_anonymized.jsonl`) — dieselbe Datei liegt auch unter `tests/fixtures/` für die Python-Seite (`test_ha_push_log_backend.py`). Damit ist die Parität nicht nur an synthetischen, sondern an echten Gerätedaten geprüft.
+
+## Event Platform: persistenter Store (Stand 2026-11-22)
+
+Die Event-Pipeline normalisiert einzelne Zeilen; der **Event-Store** macht daraus eine dauerhafte, abfragbare Historie. Zwei unabhängige, aber schema-identische Implementierungen, je eine eigene SQLite-Datei pro Prozess (kein gemeinsamer Schreibzugriff nötig, da beide Seiten dieselbe JSONL-Quelle unabhängig neu einlesen können):
+
+- Rust: `crates/aosu-core/src/event_store.rs` (`rusqlite`, `bundled`-Feature) — genutzt vom Desktop-Client über `NotificationLogTransport` (Registry-Name `push-log`), das die SQLite-Datei `<jsonl-pfad>.sqlite` neben der JSONL-Quelle anlegt.
+- Python: `tools/event_store.py` (nur Standardbibliothek, `sqlite3`) — gleiches Schema, eigenständig gegen dieselbe reale Fixture verifiziert (`tests/test_event_store.py`).
+
+### Schema-Versionierung
+
+Konstante `SCHEMA_VERSION = 1` (beide Sprachen). Tabelle `schema_meta` hält genau eine Zeile mit der Version, mit der die Datei angelegt wurde. Beim Öffnen einer bestehenden Datei wird die gespeicherte Version gegen die Konstante geprüft:
+
+- stimmt sie, wird normal geöffnet.
+- stimmt sie nicht, schlägt das Öffnen **laut fehl** (keine stille Migration, keine Datenverlust-Gefahr durch automatisches Schema-Ändern) — es existiert aktuell keine Migrationslogik. Eine künftige Schemaänderung muss entweder (a) `SCHEMA_VERSION` erhöhen und eine explizite Migrationsfunktion pro Sprache ergänzen, oder (b) rückwärtskompatibel bleiben (nur neue, optionale Spalten).
+
+### Datenmodell (`StoredEvent` / `events`-Tabelle)
+
+| Feld | Bedeutung |
+|---|---|
+| `id` | Eindeutige ID, deterministisch aus dem Rohinhalt der Zeile abgeleitet (Hash) — macht wiederholtes Einlesen derselben JSONL-Datei idempotent (`INSERT OR IGNORE`), kein Duplikat bei erneutem Start. |
+| `timestamp_ms` | Zeitstempel in Millisekunden seit Epoch. |
+| `event_type` | Kanonischer Typ aus dem Vokabular oben. |
+| `channel` | Android-Kanalname (Rohwert, für Diagnose). |
+| `camera_name` | Kameraname, falls bekannt (`None`/`null` möglich). |
+| `confidence` | Klassifikations-Konfidenz (`hoch`/`niedrig`/…, siehe Zuordnungstabelle). |
+| `classification_note` | Freitext-Begründung der Klassifikation (z. B. „generischer Text, defaulted"). |
+| `raw_json` | Die komplette Original-Zeile — nie verworfen, auch nicht bei unbekanntem `event_type`. |
+
+Funktionsumfang (identisch in beiden Sprachen, siehe Tests): Ingestion mit Dedup- und Fehlerbericht (`inserted`/`duplicates`/`malformed`, inkl. Fehlertext-Stichproben), Abfrage mit Filter (Kamera, Typ, Zeitraum, Volltextsuche) und Pagination, Geräteaktivität (Events pro Kamera, zuletzt gesehen, Kategorien), Analytics (heute, nach Kamera, nach Typ, 14-Tage-Verlauf), Export (JSON, CSV), Aufbewahrung (löschen nach Alter und/oder maximaler Zeilenzahl).

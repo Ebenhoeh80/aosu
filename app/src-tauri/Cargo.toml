@@ -6,7 +6,15 @@ license = "MIT"
 
 [lib]
 name = "aosu_desktop_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# "cdylib" (needed for Tauri *mobile* builds -- this project targets
+# desktop only, no Android/iOS config) is deliberately dropped: the
+# MinGW linker enforces an export-ordinal limit on DLL targets, and
+# rusqlite's bundled sqlite3 amalgamation alone pushes the combined
+# Tauri+WebView2+SQLite symbol count over it ("export ordinal too
+# large" from `ld.exe`) on `cargo test`/`cargo build` with the GNU
+# toolchain workaround (see CONTRIBUTING.md). staticlib+rlib is all a
+# desktop-only app actually needs.
+crate-type = ["staticlib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

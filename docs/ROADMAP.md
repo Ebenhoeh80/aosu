@@ -39,6 +39,18 @@ Erste reale Push-Benachrichtigung einer Aosu-Kamera empfangen und zu einer volls
 - [ ] Bekannte Lücke: HA liest per Polling, kein echter Push von der Datei in HA hinein.
 - [ ] Noch unbeobachtet: ob andere Kanäle (`lowpower.v2`, `dismantle.v2`, `call.v2`) ebenfalls den Kameranamen im Text tragen, und ob spezifischere Schlüsselwörter (Person/Fahrzeug/Paket) je in der Praxis auftreten.
 
+## Event Platform (abgeschlossen, 2026-11-22)
+
+Die Event-Pipeline als reifste Produktionsfunktion genommen und zu einer vollständigen, persistenten Plattform ausgebaut — explizit *keine* weitere Protokoll-/Auth-/Transport-Recherche, dafür Tiefe auf echten Daten. Begründung/Schema siehe `docs/event-pipeline.md` Abschnitt „Event Platform: persistenter Store".
+
+- [x] **Persistenter Event-Store**, zwei Sprachen, gleiches Schema, Schema-Versionierung dokumentiert und fehlschlagsicher geprüft: `crates/aosu-core/src/event_store.rs` (SQLite über `rusqlite`, 18 Tests) und `tools/event_store.py` (stdlib `sqlite3`, 10 Tests inkl. Parität gegen die echte Fixture).
+- [x] Idempotente Ingestion (Dedup über Inhalts-Hash), Abfrage mit Filter (Kamera/Typ/Zeitraum/Volltext) und Pagination, Geräteaktivität, lokale Analytics (heute/nach Kamera/nach Typ/14-Tage-Verlauf), Export (JSON/CSV), konfigurierbare Aufbewahrung (nach Alter und/oder Zeilenzahl) — überlebt App-Neustarts.
+- [x] `NotificationLogTransport` auf den Store umgebaut (vorher: Datei bei jedem Aufruf neu geparst, keine Persistenz). `rusqlite::Connection` ist nicht `Sync`, der `Transport`-Trait verlangt es aber — Store intern per `Mutex` gekapselt.
+- [x] `Transport`-Trait um `query_events`/`event_analytics`/`device_activity`/`export_events`/`apply_event_retention` erweitert, Standard-Implementierung `Unsupported` für Transporte ohne Event-Store (Mock/Local/Cloud/Kestrel) — kein `Option<&EventStore>`-Downcasting nötig, Mutex-Zugriff bleibt vollständig in `NotificationLogTransport` gekapselt.
+- [x] Tauri-Kommandos (`query_events`, `device_activity`, `event_analytics`, `export_events`, `apply_event_retention`) ohne Mock-Fallback — ein Fehler bedeutet hier meist „Transport hat keinen Store", nicht „keine Tauri-Laufzeit", und soll nicht durch erfundene Demo-Zahlen verschleiert werden.
+- [x] Neuer App-Bereich **„Event-Plattform"** (`app/src/EventPlatform.tsx`): Timeline mit Filter/Suche/Pagination, Geräteaktivität, Analytics (14-Tage-Balken), Export-Buttons (JSON/CSV als Datei-Download), Aufbewahrungs-Steuerung — zeigt ehrlich `ErrorNotice`, wenn der aktive Transport (z. B. Mock) keinen Store hat, statt leere/erfundene Daten.
+- [x] Vollständige Testabdeckung: 7 neue Rust-Unit-Tests in `notification_log.rs` für die Trait-Erweiterung, 10 neue Python-Tests, 6 neue Vitest-Tests (`EventPlatform.test.tsx`), 1 neuer Playwright-E2E-Test (ehrlicher Fehlerzustand im Mock-Modus), 4 neue `api.ts`-Tests (kein stiller Mock-Fallback).
+
 ## Produktentwicklungsphase (parallel zu Phase 2, nicht davon blockiert)
 
 Ziel: vollständige Nutzerreise gegen Mock-Geräte, unabhängig vom Ausgang von Phase 2.

@@ -3,10 +3,10 @@
 //! testable with plain `cargo test`, no Tauri runtime required.
 
 use aosu_core::{
-    build_bundle, scan_ports, Device, Event, Notification, Timestamp, TransportConfig,
-    TransportRegistry, DEFAULT_PROBE_PORTS,
+    build_bundle, scan_ports, Device, DeviceActivity, Event, EventAnalytics, EventQuery,
+    Notification, StoredEvent, Timestamp, TransportConfig, TransportRegistry, DEFAULT_PROBE_PORTS,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -245,4 +245,175 @@ pub fn export_diagnostics(
     let network = network_host.map(|h| scan_ports(&h, DEFAULT_PROBE_PORTS, Duration::from_secs(2)));
     let bundle = build_bundle(&active_name, transport.capability_report(), network);
     serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())
+}
+
+// -- Event Platform: persistent storage/query/analytics/export/retention.
+// Only the active transport's own support matters here (today: only
+// "push-log"); every other transport's TransportError::Unsupported is
+// surfaced as a plain string, the UI already has an ErrorNotice pattern
+// for that (see docs/event-pipeline.md, docs/ROADMAP.md).
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventQueryDto {
+    pub camera_name: Option<String>,
+    pub event_type: Option<String>,
+    pub since_ms: Option<i64>,
+    pub until_ms: Option<i64>,
+    pub search_text: Option<String>,
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
+}
+
+fn default_limit() -> i64 {
+    50
+}
+
+impl From<EventQueryDto> for EventQuery {
+    fn from(d: EventQueryDto) -> Self {
+        Self {
+            camera_name: d.camera_name,
+            event_type: d.event_type,
+            since_ms: d.since_ms,
+            until_ms: d.until_ms,
+            search_text: d.search_text,
+            limit: d.limit,
+            offset: d.offset,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredEventDto {
+    id: String,
+    timestamp_ms: i64,
+    event_type: String,
+    channel: String,
+    camera_name: Option<String>,
+    confidence: String,
+    classification_note: Option<String>,
+    raw_json: String,
+}
+
+impl From<StoredEvent> for StoredEventDto {
+    fn from(e: StoredEvent) -> Self {
+        Self {
+            id: e.id,
+            timestamp_ms: e.timestamp_ms,
+            event_type: e.event_type,
+            channel: e.channel,
+            camera_name: e.camera_name,
+            confidence: e.confidence,
+            classification_note: e.classification_note,
+            raw_json: e.raw_json,
+        }
+    }
+}
+
+#[tauri::command]
+pub fn query_events(
+    state: State<AppState>,
+    query: EventQueryDto,
+) -> Result<Vec<StoredEventDto>, String> {
+    let transport = state.transport.lock().map_err(|e| e.to_string())?;
+    transport
+        .query_events(&query.into())
+        .map(|rows| rows.into_iter().map(StoredEventDto::from).collect())
+        .map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceActivityDto {
+    camera_name: String,
+    event_count: i64,
+    distinct_event_types: Vec<String>,
+    last_seen_ms: i64,
+}
+
+impl From<DeviceActivity> for DeviceActivityDto {
+    fn from(a: DeviceActivity) -> Self {
+        Self {
+            camera_name: a.camera_name,
+            event_count: a.event_count,
+            distinct_event_types: a.distinct_event_types,
+            last_seen_ms: a.last_seen_ms,
+        }
+    }
+}
+
+#[tauri::command]
+pub fn device_activity(state: State<AppState>) -> Result<Vec<DeviceActivityDto>, String> {
+    let transport = state.transport.lock().map_err(|e| e.to_string())?;
+    transport
+        .device_activity()
+        .map(|rows| rows.into_iter().map(DeviceActivityDto::from).collect())
+        .map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventAnalyticsDto {
+    events_today: i64,
+    by_camera: Vec<(String, i64)>,
+    by_type: Vec<(String, i64)>,
+    daily_counts_last_14_days: Vec<(String, i64)>,
+}
+
+impl From<EventAnalytics> for EventAnalyticsDto {
+    fn from(a: EventAnalytics) -> Self {
+        Self {
+            events_today: a.events_today,
+            by_camera: a.by_camera,
+            by_type: a.by_type,
+            daily_counts_last_14_days: a.daily_counts_last_14_days,
+        }
+    }
+}
+
+#[tauri::command]
+pub fn event_analytics(state: State<AppState>) -> Result<EventAnalyticsDto, String> {
+    let transport = state.transport.lock().map_err(|e| e.to_string())?;
+    transport
+        .event_analytics(now_ms())
+        .map(EventAnalyticsDto::from)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn export_events(
+    state: State<AppState>,
+    query: EventQueryDto,
+    format: String,
+) -> Result<String, String> {
+    let fmt = match format.as_str() {
+        "csv" => aosu_core::ExportFormat::Csv,
+        _ => aosu_core::ExportFormat::Json,
+    };
+    let transport = state.transport.lock().map_err(|e| e.to_string())?;
+    transport
+        .export_events(&query.into(), fmt)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn apply_event_retention(
+    state: State<AppState>,
+    max_age_days: Option<u32>,
+    max_rows: Option<i64>,
+) -> Result<i64, String> {
+    let transport = state.transport.lock().map_err(|e| e.to_string())?;
+    transport
+        .apply_event_retention(now_ms(), max_age_days, max_rows)
+        .map_err(|e| e.to_string())
 }

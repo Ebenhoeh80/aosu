@@ -4,9 +4,13 @@ import type {
   AppNotification,
   CapabilityReport,
   Device,
+  DeviceActivity,
   DeviceEvent,
   DiagnosticsBundle,
+  EventAnalytics,
+  EventQueryFilter,
   PortCheck,
+  StoredEvent,
 } from "./types";
 
 /// Whether the last call to any api.* function fell back to mock data
@@ -32,6 +36,19 @@ async function callOrMock<T>(
     lastCallWasMock = true;
     return mockFallback();
   }
+}
+
+/// Event Platform commands deliberately do *not* fall back to fake mock
+/// data on failure: a failure here most often means "the active
+/// transport doesn't have an event store" (e.g. mock/local/cloud,
+/// which genuinely don't), not "no Tauri runtime" -- conflating those
+/// would silently show invented analytics numbers as if they were
+/// real. Callers show the real error via ErrorNotice instead.
+async function callRequired<T>(
+  command: string,
+  args: Record<string, unknown> | undefined,
+): Promise<T> {
+  return invoke<T>(command, args);
 }
 
 export const api = {
@@ -67,4 +84,19 @@ export const api = {
 
   capabilityReport: (): Promise<CapabilityReport> =>
     callOrMock("capability_report", undefined, mock.mockCapabilityReport),
+
+  // -- Event Platform (see docs/event-pipeline.md). No mock fallback --
+  // see callRequired for why.
+  queryEvents: (filter: EventQueryFilter): Promise<StoredEvent[]> =>
+    callRequired("query_events", { query: filter }),
+
+  deviceActivity: (): Promise<DeviceActivity[]> => callRequired("device_activity", undefined),
+
+  eventAnalytics: (): Promise<EventAnalytics> => callRequired("event_analytics", undefined),
+
+  exportEvents: (filter: EventQueryFilter, format: "json" | "csv"): Promise<string> =>
+    callRequired("export_events", { query: filter, format }),
+
+  applyEventRetention: (maxAgeDays?: number, maxRows?: number): Promise<number> =>
+    callRequired("apply_event_retention", { maxAgeDays, maxRows }),
 };

@@ -17,6 +17,11 @@ pub fn run() {
             commands::active_transport,
             commands::switch_transport,
             commands::export_diagnostics,
+            commands::query_events,
+            commands::device_activity,
+            commands::event_analytics,
+            commands::export_events,
+            commands::apply_event_retention,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

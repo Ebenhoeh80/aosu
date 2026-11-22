@@ -88,6 +88,45 @@ export interface PortCheck {
   open: boolean;
 }
 
+// -- Event Platform (persistent store, see docs/event-pipeline.md).
+// Only meaningful for transports that have one (today: "push-log");
+// others return an error the UI surfaces via ErrorNotice.
+
+export interface StoredEvent {
+  id: string;
+  timestampMs: number;
+  eventType: string;
+  channel: string;
+  cameraName: string | null;
+  confidence: string;
+  classificationNote: string | null;
+  rawJson: string;
+}
+
+export interface EventQueryFilter {
+  cameraName?: string;
+  eventType?: string;
+  sinceMs?: number;
+  untilMs?: number;
+  searchText?: string;
+  limit: number;
+  offset: number;
+}
+
+export interface DeviceActivity {
+  cameraName: string;
+  eventCount: number;
+  distinctEventTypes: string[];
+  lastSeenMs: number;
+}
+
+export interface EventAnalytics {
+  eventsToday: number;
+  byCamera: [string, number][];
+  byType: [string, number][];
+  dailyCountsLast14Days: [string, number][];
+}
+
 export interface DiagnosticsBundle {
   generatedAtEpochSeconds: number;
   appVersion: string;

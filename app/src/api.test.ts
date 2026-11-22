@@ -46,3 +46,30 @@ describe("api (offline-first wrapper)", () => {
     expect(updated?.acknowledged).toBe(true);
   });
 });
+
+describe("api Event Platform commands (no mock fallback)", () => {
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset();
+  });
+
+  it("returns real query results when the transport supports it", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce([{ id: "e1" }]);
+    const events = await api.queryEvents({ limit: 10, offset: 0 });
+    expect(events).toEqual([{ id: "e1" }]);
+  });
+
+  it("propagates the real error instead of inventing mock data", async () => {
+    vi.mocked(invoke).mockRejectedValueOnce(new Error("not supported by this transport"));
+    await expect(api.queryEvents({ limit: 10, offset: 0 })).rejects.toThrow(
+      "not supported by this transport",
+    );
+  });
+
+  it("device activity and analytics also propagate errors without a fallback", async () => {
+    vi.mocked(invoke).mockRejectedValue(new Error("unsupported"));
+    await expect(api.deviceActivity()).rejects.toThrow();
+    await expect(api.eventAnalytics()).rejects.toThrow();
+    await expect(api.exportEvents({ limit: 10, offset: 0 }, "json")).rejects.toThrow();
+    await expect(api.applyEventRetention(30)).rejects.toThrow();
+  });
+});

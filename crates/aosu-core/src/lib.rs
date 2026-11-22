@@ -4,6 +4,7 @@
 pub mod capability;
 pub mod device;
 pub mod diagnostics;
+pub mod event_store;
 pub mod notification_pipeline;
 pub mod registry;
 pub mod transport;
@@ -12,6 +13,10 @@ pub mod transports;
 pub use capability::{BlockedReason, Capability, CapabilityReport, Support};
 pub use device::*;
 pub use diagnostics::{build_bundle, scan_ports, DiagnosticsBundle, DEFAULT_PROBE_PORTS};
+pub use event_store::{
+    DeviceActivity, EventAnalytics, EventQuery, EventStore, IngestReport, StoredEvent,
+    SCHEMA_VERSION,
+};
 pub use notification_pipeline::{normalize, RawNotification};
 pub use registry::{TransportConfig, TransportRegistry};
-pub use transport::{Result, Transport, TransportError};
+pub use transport::{ExportFormat, Result, Transport, TransportError};

@@ -11,6 +11,9 @@ project-start.mc
 # Rust
 /target/
 crates/*/target/
+# EventStore derives a sibling "<path>.sqlite" next to whatever JSONL
+# file it reads (see event_store.rs) -- never source, never commit it.
+*.jsonl.sqlite
 # Machine-local linker override (see CONTRIBUTING.md); do not commit --
 # CI and MSVC-equipped machines must not pick up another contributor's
 # absolute MinGW path.
