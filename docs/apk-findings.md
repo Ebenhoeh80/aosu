@@ -30,6 +30,14 @@ Testgerät: Samsung SM-S901B, Android 16, App 5.11.20 (identisch mit der XAPK), 
 - App-UI: Der Tab „Ereignisse" bietet **Cloud / Lokal**. „Lokal" spielt Aufnahmen von der Basisstation ab. Die Live-Ansicht hat Beleuchtung, Stimmwechsel, Gegensprechen und zwei Warn-Aktionen (nicht ausgelöst).
 - Hinweis zum Test: Ein erster Tap traf versehentlich eine Black-Friday-Kachel und öffnete kurz die Shopseite im Browser. Dort wurde nichts bestätigt, und die App wurde per Zurück-Taste wiederhergestellt.
 
+### Push-Benachrichtigungen (passiv, 2026-11-22, mit echtem Inhalt)
+
+Nach zwei früheren Messfenstern ohne jede erfasste Benachrichtigung (~85 Min., siehe ADR 0002) kam am 22.11. eine reale Bewegungsmeldung an. Direkt über `adb shell dumpsys notification --noredact` ausgelesen:
+
+- **Belegt:** Die Meldung auf Kanal `event.v2` enthält den **Kameranamen im Klartext** im `android.text`-Feld (Format: „Ereignis vor <Kameraname> entdeckt"), kein Titel (`android.title` ist buchstäblich `null`). Damit ist die zuvor offene Frage „kann Weg A (Push-Benachrichtigungen) Kameras unterscheiden?" **positiv beantwortet**.
+- **Praxis-Besonderheiten des Rohformats** (jetzt in `tools/notification_bridge.py` korrigiert, Tests in `tests/test_notification_bridge.py`): Auf diesem Gerät steht der gesamte `NotificationRecord`-Header inkl. `key=...` in **einer Zeile**, gefolgt von einer eingebetteten `: Notification(...)`-Beschreibung — ein naives `key=([^\r\n]+)` fängt versehentlich diesen ganzen Rest mit ein. Zudem erscheint `String (...)`-gewickelter Text mit einer schließenden Klammer, die ohne Sonderbehandlung im geparsten Text hängen bleibt.
+- **Weiterhin unbekannt:** Ob auch die stillen Kanäle (`silence.v2`, `lowpower.v2`, `dismantle.v2`, `call.v2`) denselben Kameranamen im Text tragen, da bisher nur `event.v2` real beobachtet wurde.
+
 ## Nicht geprüft / offen
 
 - Login-Ablauf, Endpunktliste und Signaturverfahren (Klassen mit `com.glazero.*`, Retrofit-Interfaces).

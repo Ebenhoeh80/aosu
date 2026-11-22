@@ -22,6 +22,20 @@ SILENT_BLOCK = """0x3: pkg=com.glazero.android user=UserHandle{0} id=3 tag=null 
   when=1732208590000
 """
 
+# Structurally identical to a real device's `dumpsys notification` output
+# observed during this project's own testing (single-line
+# `key=...: Notification(...)` format, literal `android.title=null`) --
+# the camera name below is a placeholder, not the real one, to avoid
+# publishing the tester's property layout in a public test fixture.
+REAL_DEVICE_BLOCK = """0x0b64f3db: pkg=com.glazero.android user=UserHandle{0} id=3 tag=null importance=4 key=0|com.glazero.android|3|null|10319: Notification(channel=com.glazero.android.event.v2 shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=AUTO_CANCEL color=0xff2a8bd2 actions=2 vis=PRIVATE semFlags=0x2008 semPriority=0 semMissedCount=0))
+      uid=10319 userId=0
+      opPkg=com.glazero.android
+                android.title=null
+                android.text=String (Ereignis vor Kamera 1 entdeckt)
+                android.bigText=String (Ereignis vor Kamera 1 entdeckt)
+  when=1795330875651
+"""
+
 
 def test_parses_motion_notification_with_channel_mapping():
     event = nb.parse_notification_block(MOTION_BLOCK)
@@ -72,6 +86,41 @@ def test_poll_once_deduplicates_by_key_and_timestamp():
         assert len(second) == 0  # already seen
     finally:
         nb.fetch_dumpsys = orig
+
+
+def test_real_device_block_strips_trailing_paren_from_wrapped_text():
+    event = nb.parse_notification_block(REAL_DEVICE_BLOCK)
+    assert event is not None
+    assert event.text == "Ereignis vor Kamera 1 entdeckt"
+    assert not event.text.endswith(")")
+
+
+def test_real_device_block_treats_literal_null_title_as_none():
+    event = nb.parse_notification_block(REAL_DEVICE_BLOCK)
+    assert event.title is None
+
+
+def test_real_device_block_key_stops_before_the_trailing_notification_dump():
+    event = nb.parse_notification_block(REAL_DEVICE_BLOCK)
+    assert event.key == "0|com.glazero.android|3|null|10319"
+
+
+def test_real_device_block_identifies_the_camera_named_in_the_text():
+    event = nb.parse_notification_block(REAL_DEVICE_BLOCK)
+    assert "Kamera 1" in event.text
+
+
+def test_real_device_block_extracts_camera_name_into_its_own_field():
+    event = nb.parse_notification_block(REAL_DEVICE_BLOCK)
+    assert event.camera_name == "Kamera 1"
+
+
+def test_extract_camera_name_returns_none_for_unrecognized_phrasing():
+    assert nb.extract_camera_name("Some other message entirely") is None
+
+
+def test_extract_camera_name_returns_none_for_missing_text():
+    assert nb.extract_camera_name(None) is None
 
 
 def test_run_calls_sink_for_each_fresh_event_and_stops_after_max_iterations():

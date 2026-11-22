@@ -50,6 +50,16 @@ CHANNEL_TO_EVENT_KIND = {
 }
 
 
+# Only the "event.v2" / motion phrasing has actually been observed on a
+# real device so far ("Ereignis vor <Kamera> entdeckt", de-DE, 2026-11-22,
+# see docs/apk-findings.md). Not yet confirmed for other channels or
+# locales -- extend this list only after observing the real text, not by
+# guessing the pattern for an untested channel.
+CAMERA_NAME_PATTERNS = [
+    r"^Ereignis vor (.+) entdeckt$",
+]
+
+
 @dataclass
 class BridgeEvent:
     channel: str
@@ -58,6 +68,20 @@ class BridgeEvent:
     text: Optional[str]
     key: Optional[str]
     when_ms: Optional[int]
+    camera_name: Optional[str] = None
+
+
+def extract_camera_name(text: Optional[str]) -> Optional[str]:
+    """Best-effort extraction of the camera name from a notification's
+    body text, using only patterns actually observed on a real device.
+    Returns None rather than guessing when nothing matches."""
+    if not text:
+        return None
+    for pattern in CAMERA_NAME_PATTERNS:
+        m = re.match(pattern, text)
+        if m:
+            return m.group(1)
+    return None
 
 
 def parse_notification_block(block: str) -> Optional[BridgeEvent]:
@@ -66,9 +90,9 @@ def parse_notification_block(block: str) -> Optional[BridgeEvent]:
     if f"pkg={PACKAGE}" not in block:
         return None
     channel = _match(block, r"channel=([^\s]+)")
-    title = _match(block, r"android\.title=(?:String \()?([^\r\n]{0,200})")
-    text = _match(block, r"android\.text=(?:String \()?([^\r\n]{0,400})")
-    key = _match(block, r"key=([^\r\n]+)")
+    title = _match_extra(block, "android.title")
+    text = _match_extra(block, "android.text")
+    key = _match(block, r"key=([^:\s]+)")
     when_raw = _match(block, r"when=(\d+)")
     kind = CHANNEL_TO_EVENT_KIND.get(channel or "", "unknown")
     return BridgeEvent(
@@ -78,12 +102,29 @@ def parse_notification_block(block: str) -> Optional[BridgeEvent]:
         text=text,
         key=key,
         when_ms=int(when_raw) if when_raw else None,
+        camera_name=extract_camera_name(text),
     )
 
 
 def _match(text: str, pattern: str) -> Optional[str]:
     m = re.search(pattern, text)
     return m.group(1) if m else None
+
+
+def _match_extra(block: str, field: str) -> Optional[str]:
+    """Parse one `dumpsys notification` extras line. Real devices use at
+    least two formats for the same field:
+      android.title=null                        -> genuinely absent
+      android.text=String (Ereignis ... entdeckt) -> wrapped, trailing ')'
+    """
+    m = re.search(rf"{re.escape(field)}=(.+)", block)
+    if not m:
+        return None
+    raw = m.group(1).rstrip("\r\n")
+    if raw == "null":
+        return None
+    wrapped = re.match(r"String \((.*)\)$", raw)
+    return wrapped.group(1) if wrapped else raw
 
 
 def parse_dumpsys_output(output: str) -> list[BridgeEvent]:
