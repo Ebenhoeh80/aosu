@@ -31,6 +31,6 @@ Ich hatte `smart-aosu-cloud` stillschweigend als „Wiederverwendung statt Eigen
 
 ## Nächster konkreter Schritt (keine weitere Recherche)
 
-1. Monitor für Push-Benachrichtigungen erneut laufen lassen, diesmal mit einem **bewussten Auslöser** (Bewegung vor einer Kamera), um echten Inhalt zu bekommen — das entscheidet, ob Weg A auch Kamera-Zuordnung kann.
-2. Wenn Inhalt brauchbar ist: HA-Automatisierung/Blueprint bauen (Kanal- oder Text-Parsing → Ereignis-Entität), das ist der tatsächliche „Cloud-Client" für Ereignisse.
+1. ~~Monitor für Push-Benachrichtigungen erneut laufen lassen...~~ **Erledigt, 2026-11-22.** Eine reale Bewegungsmeldung kam an (`event.v2`-Kanal). Belegt: Der Text enthält den Kameranamen im Klartext („Ereignis vor <Kamera> entdeckt"). **Weg A kann also Kamera-Zuordnung — die zuvor offene Frage ist positiv beantwortet.** Details und zwei dabei gefundene Parser-Bugs (gierige `key=`-Regex, nicht entfernte schließende Klammer bei „String (...)"-Text): `docs/apk-findings.md`, Fix in `tools/notification_bridge.py` (`extract_camera_name`, Tests in `tests/test_notification_bridge.py`).
+2. Nächster Schritt: HA-Automatisierung/Blueprint bauen (Kanal- + `camera_name` → Ereignis-Entität), das ist der tatsächliche „Cloud-Client" für Ereignisse. Noch offen: ob auch die anderen Kanäle (`lowpower.v2`, `dismantle.v2`, `call.v2`) denselben Kameranamen im Text tragen — bisher nur `event.v2` real beobachtet.
 3. Video bleibt offen, bis H1L-Zugriff (Weg G) oder Aosu-Antwort (Weg H) vorliegt.
