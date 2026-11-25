@@ -1,5 +1,7 @@
 # aosu-desktop (Arbeitstitel)
 
+[![Auf GitHub sponsern](https://img.shields.io/badge/%E2%9D%A4%20Auf%20GitHub%20sponsern-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/Ebenhoeh80)
+
 Unabhängiges Open-Source-Projekt (MIT-Lizenz) für einen Linux- und Windows-Desktop-Client für Tuya-basierte Kamera-Ökosysteme. Aosu ist das erste unterstützte Ökosystem, nicht das einzig mögliche. Nicht mit Aosu/Glazero verbunden. Es werden weder Quellcode, Grafiken noch Marken der Original-App verwendet.
 
 ## Status: vollständige Produktoberfläche, echte Hardware (noch) nicht angebunden
@@ -43,6 +45,26 @@ Ergebnisse bitte ohne Seriennummern, MAC-Adressen und Konto-Daten als Issue post
 ## Grenzen
 
 Keine Extraktion von App-Schlüsseln, kein Umgehen von Schutzmaßnahmen, kein Zugriff auf fremde Konten oder Geräte. Siehe [SECURITY.md](SECURITY.md).
+
+## ❤️ Support this project
+
+<div align="center">
+
+**Ich entwickle und pflege dieses Projekt in meiner Freizeit und trage die laufenden Kosten selbst – meine Zeit, Strom, Werkzeuge und IT-Ausstattung.**
+
+Sponsoring ist freiwillig und begründet keinen Anspruch auf Support, Funktionen oder Antwortzeiten. Jeder Beitrag, egal wie klein, hilft. Vielen Dank! 🙏
+
+<a href="https://github.com/sponsors/Ebenhoeh80">
+  <img src="https://img.shields.io/badge/%E2%9D%A4%20Auf%20GitHub%20sponsern-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="GitHub Sponsors" height="42">
+</a>
+<a href="https://www.paypal.com/pool/9p84qTHCFr?sr=wccr">
+  <img src="https://img.shields.io/badge/%E2%9D%A4%20Spenden%20via%20PayPal-PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white" alt="Spenden via PayPal" height="42">
+</a>
+<a href="https://buymeacoffee.com/daneben">
+  <img src="https://img.shields.io/badge/%E2%98%95%20Spendier%20mir%20einen%20Kaffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee" height="42">
+</a>
+
+</div>
 
 ## Lizenz
 
