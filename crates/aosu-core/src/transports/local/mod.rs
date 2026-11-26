@@ -141,7 +141,8 @@ impl Transport for LocalTransport {
         ] {
             r.set(cap, blocked);
         }
-        r.set(Capability::Discover, Support::Unknown);
+        // `discover()` delegates to `devices()`, which needs the same key.
+        r.set(Capability::Discover, blocked);
         r.set(Capability::Events, Support::Unsupported);
         r.set(Capability::Notifications, Support::Unsupported);
         r.set(Capability::TwoWayAudio, Support::Unsupported);

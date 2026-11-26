@@ -616,6 +616,211 @@ mod tests {
         assert!(fw_count > 0, "expected at least one firmware version");
     }
 
+    /// Recursively collects JSON *field names* only. Values are never returned,
+    /// logged or stored; this keeps credential-bearing responses out of logs.
+    fn collect_json_field_names(value: &serde_json::Value, out: &mut Vec<String>, depth: usize) {
+        if depth > 8 {
+            return;
+        }
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, child) in map {
+                    if !out.iter().any(|seen| seen == key) {
+                        out.push(key.clone());
+                    }
+                    collect_json_field_names(child, out, depth + 1);
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for child in items {
+                    collect_json_field_names(child, out, depth + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Read-only diagnostic: which fields does the OEM detail endpoint expose?
+    /// Prints field names and an errno only -- no values, tokens or keys.
+    #[test]
+    #[ignore = "requires AOSU_TEST_EMAIL/AOSU_TEST_PASSWORD/AOSU_TEST_APK"]
+    fn cloud_live_probe_detail_field_names() {
+        let email = std::env::var("AOSU_TEST_EMAIL").expect("AOSU_TEST_EMAIL");
+        let password = std::env::var("AOSU_TEST_PASSWORD").expect("AOSU_TEST_PASSWORD");
+        let apk = std::env::var("AOSU_TEST_APK").expect("AOSU_TEST_APK");
+        let client = AosuCloudClient::from_apk(CloudClientConfig::new(apk)).expect("client");
+        let session = client
+            .login(&CloudCredentials { email, password })
+            .expect("login");
+        let ms = now_ms().to_string();
+        let rid = Uuid::new_v4().to_string();
+        let sign = client.sign(&rid, &ms);
+        let list_url = format!("{}{}", client.config.api_base, DEVICE_LIST_PATH);
+        let list_resp = client
+            .http
+            .post(&list_url)
+            .query(&[("uuid", rid.as_str()), ("t", ms.as_str())])
+            .headers(
+                client
+                    .base_headers(Some(&session.sid), Some(&session.uid), &sign)
+                    .expect("headers"),
+            )
+            .send()
+            .expect("list request");
+        let list_json: serde_json::Value =
+            serde_json::from_str(&list_resp.text().unwrap_or_default()).expect("list json");
+        let mut serials = Vec::new();
+        collect_identifiers(&list_json, &mut serials, 0);
+        serials.truncate(4);
+        assert!(!serials.is_empty(), "no serial candidates in inventory");
+
+        let detail_url = format!("{}{}", client.config.api_base, "/v1/dev/getInfoBySn");
+        let mut accepted = None;
+        let mut last_errno = -1;
+        for param in ["sn", "deviceSn", "devSn", "serialNumber"] {
+            for candidate in &serials {
+                let ms = now_ms().to_string();
+                let rid = Uuid::new_v4().to_string();
+                let sign = client.sign(&rid, &ms);
+                let resp = client
+                    .http
+                    .post(&detail_url)
+                    .query(&[("uuid", rid.as_str()), ("t", ms.as_str())])
+                    .headers(
+                        client
+                            .base_headers(Some(&session.sid), Some(&session.uid), &sign)
+                            .expect("headers"),
+                    )
+                    .form(&[(param, candidate.as_str())])
+                    .send()
+                    .expect("detail request");
+                let value: serde_json::Value =
+                    serde_json::from_str(&resp.text().unwrap_or_default()).expect("detail json");
+                last_errno = value.get("errno").and_then(|v| v.as_i64()).unwrap_or(-1);
+                if last_errno == 0 {
+                    accepted = Some((param, value));
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(150));
+            }
+            if accepted.is_some() {
+                break;
+            }
+        }
+        let (param, value) = accepted.unwrap_or_else(|| {
+            panic!(
+                "detail rejected: candidates={} last_errno={}",
+                serials.len(),
+                last_errno
+            )
+        });
+        let mut names = Vec::new();
+        collect_json_field_names(&value, &mut names, 0);
+        names.sort();
+        names.dedup();
+        eprintln!(
+            "cloud_detail_probe param={param} fields={} names={}",
+            names.len(),
+            names.join(",")
+        );
+        assert!(!names.is_empty(), "no fields in detail response");
+    }
+
+    /// Collects OEM identifier *values* from a cloud response for the read-only
+    /// probe only. They stay in process memory and are never logged.
+    fn collect_identifiers(value: &serde_json::Value, out: &mut Vec<String>, depth: usize) {
+        if depth > 8 {
+            return;
+        }
+        const ID_KEYS: [&str; 6] = ["sn", "sndisp", "basesn", "devid", "uuid", "cpdeviceid"];
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, child) in map {
+                    if ID_KEYS.contains(&key.to_ascii_lowercase().as_str()) {
+                        if let Some(s) = child.as_str() {
+                            let s = s.trim();
+                            if !s.is_empty() && !out.iter().any(|seen| seen == s) {
+                                out.push(s.to_string());
+                            }
+                        }
+                    }
+                    collect_identifiers(child, out, depth + 1);
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for child in items {
+                    collect_identifiers(child, out, depth + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Read-only diagnostic: does the login response expose Tuya account hint
+    /// fields? Logs field names only -- never passwords, tokens or identifiers.
+    #[test]
+    #[ignore = "requires AOSU_TEST_EMAIL/AOSU_TEST_PASSWORD/AOSU_TEST_APK"]
+    fn cloud_live_probe_login_field_names() {
+        let email = std::env::var("AOSU_TEST_EMAIL").expect("AOSU_TEST_EMAIL");
+        let password = std::env::var("AOSU_TEST_PASSWORD").expect("AOSU_TEST_PASSWORD");
+        let apk = std::env::var("AOSU_TEST_APK").expect("AOSU_TEST_APK");
+        let client = AosuCloudClient::from_apk(CloudClientConfig::new(apk)).expect("client");
+        let enc_pw = client
+            .encrypt_password(password.as_bytes())
+            .expect("encrypt");
+        let login_email = email.trim().to_lowercase();
+        let form = [
+            ("region", "EU"),
+            ("countryCode", "49"),
+            ("countryAbbr", "DE"),
+            ("type", "1"),
+            ("email", login_email.as_str()),
+            ("password", enc_pw.as_str()),
+            ("pwType", "2"),
+        ];
+        let ms = now_ms().to_string();
+        let rid = Uuid::new_v4().to_string();
+        let sign = client.sign(&rid, &ms);
+        let url = format!("{}{}", client.config.api_base, LOGIN_PATH);
+        let resp = client
+            .http
+            .post(&url)
+            .query(&[("uuid", rid.as_str()), ("t", ms.as_str())])
+            .headers(client.base_headers(None, None, &sign).expect("headers"))
+            .form(&form)
+            .send()
+            .expect("login request");
+        let value: serde_json::Value =
+            serde_json::from_str(&resp.text().unwrap_or_default()).expect("login json");
+        let errno = value.get("errno").and_then(|v| v.as_i64()).unwrap_or(-1);
+        let mut names = Vec::new();
+        collect_json_field_names(&value, &mut names, 0);
+        names.sort();
+        names.dedup();
+        eprintln!(
+            "cloud_login_probe errno={errno} fields={} names={}",
+            names.len(),
+            names.join(",")
+        );
+        assert_eq!(errno, 0, "login rejected");
+    }
+
+    #[test]
+    fn detail_probe_collects_field_names_without_values() {
+        let value: serde_json::Value = serde_json::from_str(
+            r#"{"errno":0,"data":{"sn":"S","localKey":"SECRET","list":[{"nestedKey":1}]}}"#,
+        )
+        .unwrap();
+        let mut names = Vec::new();
+        collect_json_field_names(&value, &mut names, 0);
+        names.sort();
+        assert_eq!(
+            names,
+            vec!["data", "errno", "list", "localKey", "nestedKey", "sn"]
+        );
+        assert!(!names.iter().any(|n| n.contains("SECRET")));
+    }
+
     fn make_zip(files: &[(&str, &[u8])]) -> Vec<u8> {
         let mut buf = std::io::Cursor::new(Vec::new());
         {

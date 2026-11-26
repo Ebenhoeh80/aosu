@@ -143,6 +143,40 @@ mod tests {
         );
     }
 
+    /// The UI blends features from `capability_report()`. Every built-in
+    /// transport must therefore answer all ten capabilities explicitly;
+    /// `Unknown` would silently hide a feature instead of showing its state.
+    #[test]
+    fn every_builtin_reports_all_capabilities() {
+        use crate::capability::{Capability, Support};
+        let all = [
+            Capability::Discover,
+            Capability::DeviceList,
+            Capability::DeviceStatus,
+            Capability::Events,
+            Capability::Notifications,
+            Capability::LiveVideo,
+            Capability::TwoWayAudio,
+            Capability::Ptz,
+            Capability::Recordings,
+            Capability::Commands,
+        ];
+        let r = TransportRegistry::with_builtins();
+        for name in r.names() {
+            let t = r
+                .build(name, &TransportConfig::default())
+                .unwrap_or_else(|| panic!("missing builtin {name}"));
+            let report = t.capability_report();
+            for cap in all {
+                assert_ne!(
+                    report.get(cap),
+                    Support::Unknown,
+                    "{name} leaves {cap:?} unknown"
+                );
+            }
+        }
+    }
+
     #[test]
     fn builds_mock_transport_by_name() {
         let r = TransportRegistry::with_builtins();

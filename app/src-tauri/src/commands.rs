@@ -213,39 +213,48 @@ pub struct SwitchTransportConfigDto {
     pub apk_path: Option<String>,
 }
 
+impl SwitchTransportConfigDto {
+    /// Pure DTO mapping, kept separate so it can be tested without a Tauri
+    /// runtime. Empty strings are treated as "not configured" so switching
+    /// transports does not carry stale values from another transport's form.
+    fn into_transport_config(self) -> TransportConfig {
+        let mut cfg = TransportConfig::default();
+        if let Some(h) = self.host {
+            if !h.is_empty() {
+                cfg.host = Some(h);
+            }
+        }
+        if let Some(p) = self.path {
+            if !p.is_empty() {
+                cfg.options.insert("path".to_string(), p);
+            }
+        }
+        if let Some(v) = self.email {
+            if !v.is_empty() {
+                cfg.options.insert("email".to_string(), v);
+            }
+        }
+        if let Some(v) = self.password {
+            if !v.is_empty() {
+                cfg.options.insert("password".to_string(), v);
+            }
+        }
+        if let Some(v) = self.apk_path {
+            if !v.is_empty() {
+                cfg.options.insert("apkPath".to_string(), v);
+            }
+        }
+        cfg
+    }
+}
+
 #[tauri::command]
 pub fn switch_transport(
     state: State<AppState>,
     name: String,
     config: Option<SwitchTransportConfigDto>,
 ) -> Result<(), String> {
-    let dto = config.unwrap_or_default();
-    let mut cfg = TransportConfig::default();
-    if let Some(h) = dto.host {
-        if !h.is_empty() {
-            cfg.host = Some(h);
-        }
-    }
-    if let Some(p) = dto.path {
-        if !p.is_empty() {
-            cfg.options.insert("path".to_string(), p);
-        }
-    }
-    if let Some(v) = dto.email {
-        if !v.is_empty() {
-            cfg.options.insert("email".to_string(), v);
-        }
-    }
-    if let Some(v) = dto.password {
-        if !v.is_empty() {
-            cfg.options.insert("password".to_string(), v);
-        }
-    }
-    if let Some(v) = dto.apk_path {
-        if !v.is_empty() {
-            cfg.options.insert("apkPath".to_string(), v);
-        }
-    }
+    let cfg = config.unwrap_or_default().into_transport_config();
 
     let built = state
         .registry

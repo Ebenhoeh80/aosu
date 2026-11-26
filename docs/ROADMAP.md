@@ -19,11 +19,13 @@ Siehe `docs/architecture.md` für die Begründung der Phaseneinteilung (gebaut n
 - [x] `CloudTransport`-Grundgerüst: echte Hostnamen, Datentypen nach beobachteten Feldern, saubere `CredentialsRequired`-Rückgabe.
 - [x] Diagnose-Knopf in der UI verdrahten (`run_network_diagnostics`, Teil des Diagnose-Centers).
 - [x] Rust-Build lokal verifiziert (siehe gelöster Blocker unten) — voller Workspace inkl. Tauri/WebView2 baut, 17/17 Tests grün, Clippy sauber.
+- [x] **Echter Cloud-Login + Gerätebestand + Firmware-Abfrage** (2026-11-26): `crates/aosu-core/src/transports/cloud/client.rs` liest die AOSU-API mit zur Laufzeit aus der nutzerbereitgestellten APK extrahiertem Signatur-/Verschlüsselungsmaterial. Live-Smoke-Test gegen das eigene Konto: HTTP 200, `errno=0`, 5 Geräte, 5 Firmware-Versionen. Zugangsdaten und Sessions bleiben nur im RAM; das Pinning-Experiment der Android-App ist für diesen Pfad **nicht** erforderlich.
 
 ## Phase 2 — abhängig von externen Entscheidungen
 
-- [ ] Echte `LocalTransport`-Authentifizierung — blockiert durch fehlenden `local_key`-Beschaffungsweg.
-- [ ] Echte `CloudTransport`-Authentifizierung — blockiert durch offenes, nicht freigegebenes Pinning-Experiment.
+- [ ] Echte `LocalTransport`-Authentifizierung — blockiert durch fehlenden `local_key`-Beschaffungsweg. Der lesende Cloud-Detail-Endpunkt `/v1/dev/getInfoBySn` wurde 2026-11-26 mit vier Seriennummern-Varianten und vier Parameternamen geprüft: durchgehend `errno=1`, ein Schlüsselfeld ist dort nicht erreichbar.
+- [ ] Cloud-Medien, Gegensprechen, Aufnahmen, PTZ und Befehle — keine dokumentierte AOSU-API; der einzige öffentlich belegte Video-/PTZ-Pfad (`tapion69/smart-aosu-cloud`) steht unter PolyForm Strict 1.0.0 und darf nicht in dieses MIT-Projekt übernommen werden.
+- [ ] Tuya-OEM-Adapter als **optionaler, nutzerfreigegebener** Pfad: Die AOSU-Login-Antwort enthält nachweislich die Feldnamen `countryCode`, `tuyaUsername` und `tuyaUid`. Ein daraus abgeleiteter OEM-Login setzt jedoch OEM-App-Zugangsdaten aus der APK und eine Zustimmung zur Tuya-Nutzung voraus (Konto-/ToS-Risiko) — nicht ohne ausdrückliche Nutzerentscheidung freigeschaltet.
 
 ## Event-Pipeline (abgeschlossen, 2026-11-22)
 
