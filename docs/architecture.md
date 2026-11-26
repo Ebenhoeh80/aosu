@@ -59,14 +59,15 @@ trait Transport {
 |---|---|
 | API-Host `api.aosulife.com`, H5-Host `home.aosulife.com` | **Belegt** (App-Strings) |
 | MQTT-TLS:8883, HTTPS:443, UDP-Relay während Livebild, kein LAN-Verkehr | **Belegt** (eigene Messung) |
-| `SignInterceptor` mit statischem Salt für Glazero-API-Signatur existiert | **Belegt** (Code gelesen, Wert nicht operationalisiert) |
+| `SignInterceptor` mit statischem Salt für Glazero-API-Signatur existiert | **Belegt** (Code gelesen; Salt und AES-Material werden 2026-11-26 zur Laufzeit aus der nutzerbereitgestellten APK gelesen, nie ins Repo geschrieben) |
+| Login-Antwort enthält `sid`, `uid`, `countryCode`, `tuyaUsername`, `tuyaUid` | **Belegt** (Feldnamen einer eigenen, lesenden Anmeldung; keine Werte gespeichert) |
 | Network-Security-Config ohne Pin-Set, `cleartextTrafficPermitted` nur als Basis | **Belegt** |
 | Programmatischer `ThingCertificatePinner` in der Tuya-SDK-Schicht aktiv genutzt | **Belegt** |
 | Ob die Glazero-Schicht selbst (`api.aosulife.com`) zusätzlich programmatisch gepinnt ist | **Unbekannt**, Experiment dafür vorbereitet, aber (noch) nicht freigegeben/ausgeführt |
 | Medien-Handshake erfordert Tuya-SDK-Sitzungsschlüssel aus OEM-Secret | **Vermutet** (allgemeines Tuya-Architekturmuster, nicht Aosu-spezifisch verifiziert) |
 
-- **Abhängigkeitsrisiko: mittel-hoch** — abhängig vom noch offenen Pinning-Experiment.
-- **Heute baubar ohne Secret:** `CloudTransport`-Grundgerüst mit echten Hostnamen, Request-/Response-Datentypen passend zu beobachteten Feldnamen (`uuid`, `t`, Header-Existenz `Gz-Sign`), das sauber `CredentialsRequired` zurückgibt. Die Signaturberechnung selbst bleibt als dokumentierte Lücke markiert, nicht implementiert.
+- **Abhängigkeitsrisiko: mittel** — Login und Gerätebestand sind ohne Pinning-Umgehung real erreichbar; Medien-, Event- und Steuerpfade bleiben unbelegt.
+- **Heute real funktionierend (2026-11-26):** `CloudTransport` mit echter Signaturberechnung, Login, Geräteliste und Firmware-Abfrage; verifiziert mit HTTP 200/`errno=0`, 5 Geräten und 5 Firmware-Versionen. Zugangsdaten, Session-Tokens und APK-Material bleiben ausschließlich im RAM. `live`, `talk`, `recordings`, `command` und `events` geben weiterhin ehrlich `Unsupported` zurück; die Tuya-Identitätsfelder der Login-Antwort sind ein belegter, aber nicht freigeschalteter Ansatz für einen späteren OEM-Adapter.
 
 ## 5. Optionale Home-Assistant-Integrationsschicht
 

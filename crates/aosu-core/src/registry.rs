@@ -71,8 +71,21 @@ impl TransportRegistry {
             let host = cfg.host.clone().unwrap_or_default();
             Box::new(LocalTransport::new(host)) as Box<dyn Transport>
         });
-        r.register("cloud", |_cfg| {
-            Box::new(CloudTransport::default()) as Box<dyn Transport>
+        r.register("cloud", |cfg| {
+            let email = cfg.options.get("email").cloned();
+            let password = cfg.options.get("password").cloned();
+            let apk_path = cfg
+                .options
+                .get("apkPath")
+                .cloned()
+                .or_else(|| cfg.options.get("apk_path").cloned());
+            let creds = match (email, password) {
+                (Some(email), Some(password)) if !email.is_empty() && !password.is_empty() => {
+                    Some(crate::transports::cloud::client::CloudCredentials { email, password })
+                }
+                _ => None,
+            };
+            Box::new(CloudTransport::with_config(creds, apk_path)) as Box<dyn Transport>
         });
         // Fictional second vendor, registered the same way a real
         // third-party crate would -- proves the registry genuinely
@@ -128,6 +141,40 @@ mod tests {
             names,
             vec!["cloud", "kestrel-mock", "local", "mock", "push-log"]
         );
+    }
+
+    /// The UI blends features from `capability_report()`. Every built-in
+    /// transport must therefore answer all ten capabilities explicitly;
+    /// `Unknown` would silently hide a feature instead of showing its state.
+    #[test]
+    fn every_builtin_reports_all_capabilities() {
+        use crate::capability::{Capability, Support};
+        let all = [
+            Capability::Discover,
+            Capability::DeviceList,
+            Capability::DeviceStatus,
+            Capability::Events,
+            Capability::Notifications,
+            Capability::LiveVideo,
+            Capability::TwoWayAudio,
+            Capability::Ptz,
+            Capability::Recordings,
+            Capability::Commands,
+        ];
+        let r = TransportRegistry::with_builtins();
+        for name in r.names() {
+            let t = r
+                .build(name, &TransportConfig::default())
+                .unwrap_or_else(|| panic!("missing builtin {name}"));
+            let report = t.capability_report();
+            for cap in all {
+                assert_ne!(
+                    report.get(cap),
+                    Support::Unknown,
+                    "{name} leaves {cap:?} unknown"
+                );
+            }
+        }
     }
 
     #[test]

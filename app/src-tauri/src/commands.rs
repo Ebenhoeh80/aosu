@@ -203,21 +203,62 @@ pub fn active_transport(state: State<AppState>) -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SwitchTransportConfigDto {
+    pub host: Option<String>,
+    pub path: Option<String>,
+    pub email: Option<String>,
+    pub password: Option<String>,
+    pub apk_path: Option<String>,
+}
+
+impl SwitchTransportConfigDto {
+    /// Pure DTO mapping, kept separate so it can be tested without a Tauri
+    /// runtime. Empty strings are treated as "not configured" so switching
+    /// transports does not carry stale values from another transport's form.
+    fn into_transport_config(self) -> TransportConfig {
+        let mut cfg = TransportConfig::default();
+        if let Some(h) = self.host {
+            if !h.is_empty() {
+                cfg.host = Some(h);
+            }
+        }
+        if let Some(p) = self.path {
+            if !p.is_empty() {
+                cfg.options.insert("path".to_string(), p);
+            }
+        }
+        if let Some(v) = self.email {
+            if !v.is_empty() {
+                cfg.options.insert("email".to_string(), v);
+            }
+        }
+        if let Some(v) = self.password {
+            if !v.is_empty() {
+                cfg.options.insert("password".to_string(), v);
+            }
+        }
+        if let Some(v) = self.apk_path {
+            if !v.is_empty() {
+                cfg.options.insert("apkPath".to_string(), v);
+            }
+        }
+        cfg
+    }
+}
+
 #[tauri::command]
 pub fn switch_transport(
     state: State<AppState>,
     name: String,
-    host: Option<String>,
-    path: Option<String>,
+    config: Option<SwitchTransportConfigDto>,
 ) -> Result<(), String> {
-    let config = match (host, path) {
-        (Some(h), _) => TransportConfig::with_host(h),
-        (None, Some(p)) => TransportConfig::with_option("path", p),
-        (None, None) => TransportConfig::default(),
-    };
+    let cfg = config.unwrap_or_default().into_transport_config();
+
     let built = state
         .registry
-        .build(&name, &config)
+        .build(&name, &cfg)
         .ok_or_else(|| format!("unknown transport \"{name}\" (see list_available_transports)"))?;
     *state.transport.lock().map_err(|e| e.to_string())? = built;
     *state

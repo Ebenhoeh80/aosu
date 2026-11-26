@@ -47,20 +47,26 @@ export function App() {
 
   async function loadAll() {
     try {
-      const [d, e, n, cap, active] = await Promise.all([
+      const [dRes, eRes, nRes, capRes, activeRes] = await Promise.allSettled([
         api.listDevices(),
         api.recentEvents(),
         api.listNotifications(),
         api.capabilityReport(),
         api.activeTransport(),
       ]);
-      setDevices(d);
-      setEvents(e);
-      setNotifications(n);
-      setCapabilityReport(cap);
-      setActiveTransport(active);
+      const errors: string[] = [];
+      if (dRes.status === "fulfilled") setDevices(dRes.value);
+      else { errors.push(`Geräte: ${String(dRes.reason)}`); setDevices([]); }
+      if (eRes.status === "fulfilled") setEvents(eRes.value);
+      else errors.push(`Ereignisse: ${String(eRes.reason)}`);
+      if (nRes.status === "fulfilled") setNotifications(nRes.value);
+      else errors.push(`Benachrichtigungen: ${String(nRes.reason)}`);
+      if (capRes.status === "fulfilled") setCapabilityReport(capRes.value);
+      else errors.push(`Capabilities: ${String(capRes.reason)}`);
+      if (activeRes.status === "fulfilled") setActiveTransport(activeRes.value);
+      else errors.push(`Transport: ${String(activeRes.reason)}`);
       setIsMockData(wasLastCallMocked());
-      setLoadError(null);
+      setLoadError(errors.length ? errors.join(" | ") : null);
     } catch (e) {
       setLoadError(String(e));
     }
@@ -152,7 +158,7 @@ export function App() {
         />
       )}
 
-      {tab === "settings" && <Settings />}
+      {tab === "settings" && <Settings onTransportChanged={loadAll} />}
     </main>
   );
 }

@@ -1,13 +1,19 @@
 import { useEffect, useState } from "react";
+import { LazyStore } from "@tauri-apps/plugin-store";
 import { api } from "./api";
 import { ErrorNotice } from "./ErrorNotice";
 
-export function Settings() {
+const settingsStore = new LazyStore("settings.json");
+
+export function Settings({ onTransportChanged }: { onTransportChanged?: () => void | Promise<void> }) {
   const [transports, setTransports] = useState<string[]>([]);
   const [active, setActive] = useState<string>("");
   const [switching, setSwitching] = useState(false);
   const [error, setError] = useState<{ target: string; message: string } | null>(null);
   const [pushLogPath, setPushLogPath] = useState("aosu-events.jsonl");
+  const [cloudEmail, setCloudEmail] = useState("");
+  const [cloudPassword, setCloudPassword] = useState("");
+  const [cloudApkPath, setCloudApkPath] = useState("");
   const [verboseLogging, setVerboseLogging] = useState(
     () => localStorage.getItem("aosu.verboseLogging") === "true",
   );
@@ -15,14 +21,50 @@ export function Settings() {
   useEffect(() => {
     api.listAvailableTransports().then(setTransports);
     api.activeTransport().then(setActive);
+    (async () => {
+      try {
+        const email = await settingsStore.get<string>("cloud.email");
+        const apkPath = await settingsStore.get<string>("cloud.apkPath");
+        const pushLog = await settingsStore.get<string>("pushlog.path");
+        if (email) setCloudEmail(email);
+        if (apkPath) setCloudApkPath(apkPath);
+        if (pushLog) setPushLogPath(pushLog);
+        // Clean up legacy plaintext password from older builds.
+        await settingsStore.delete("cloud.password");
+        await settingsStore.save();
+      } catch {
+        // store unavailable in browser/mock mode
+      }
+    })();
   }, []);
+
+  async function saveSettings() {
+    try {
+      await settingsStore.set("cloud.email", cloudEmail);
+      await settingsStore.set("cloud.apkPath", cloudApkPath);
+      // Password is intentionally not persisted to disk; keep it session-only.
+      await settingsStore.delete("cloud.password");
+      await settingsStore.set("pushlog.path", pushLogPath);
+      await settingsStore.save();
+    } catch {
+      // store unavailable in browser/mock mode
+    }
+  }
 
   async function handleSwitch(name: string) {
     setSwitching(true);
     setError(null);
     try {
-      await api.switchTransport(name, undefined, name === "push-log" ? pushLogPath : undefined);
+      await saveSettings();
+      const config =
+        name === "push-log"
+          ? { path: pushLogPath }
+          : name === "cloud"
+            ? { email: cloudEmail, password: cloudPassword, apkPath: cloudApkPath }
+            : undefined;
+      await api.switchTransport(name, config);
       setActive(name);
+      await onTransportChanged?.();
     } catch (e) {
       setError({ target: name, message: String(e) });
     } finally {
@@ -83,6 +125,25 @@ export function Settings() {
               value={pushLogPath}
               onChange={(e) => setPushLogPath(e.target.value)}
             />
+          </div>
+        )}
+        {transports.includes("cloud") && (
+          <div className="mt-3 space-y-2 border rounded p-2">
+            <p className="text-xs text-gray-600">
+              Cloud (read-only): Login + Geräteliste. E-Mail und APK-Pfad werden lokal gespeichert; das Passwort bleibt nur für diese Sitzung im Speicher und wird nicht auf die Festplatte geschrieben.
+            </p>
+            <label className="block text-xs text-gray-500" htmlFor="cloud-email">Aosu E-Mail</label>
+            <input id="cloud-email" className="border rounded px-2 py-1 w-full" value={cloudEmail} onChange={(e) => setCloudEmail(e.target.value)} autoComplete="off" />
+            <label className="block text-xs text-gray-500" htmlFor="cloud-password">Aosu Passwort (nur Sitzung)</label>
+            <input id="cloud-password" type="password" className="border rounded px-2 py-1 w-full" value={cloudPassword} onChange={(e) => setCloudPassword(e.target.value)} autoComplete="off" />
+            <label className="block text-xs text-gray-500" htmlFor="cloud-apk-path">Pfad zu Aosu APK/Split (base.apk oder split_config.arm64_v8a.apk)</label>
+            <input id="cloud-apk-path" className="border rounded px-2 py-1 w-full" value={cloudApkPath} onChange={(e) => setCloudApkPath(e.target.value)} placeholder="C:\\Pfad\\base.apk" />
+            <div className="flex gap-2 items-center">
+              <button className="px-2 py-1 rounded border bg-white" onClick={() => void saveSettings()} disabled={switching}>
+                Einstellungen speichern
+              </button>
+              <span className="text-xs text-gray-500">E-Mail/APK-Pfad werden gespeichert; Passwort bei Neustart neu eingeben.</span>
+            </div>
           </div>
         )}
       </section>

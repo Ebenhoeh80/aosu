@@ -20,11 +20,12 @@ Die Anwendung ist **vollständig nutzbar ohne jede echte Kamera, ohne Cloud-Kont
 
 ## Was heute funktioniert
 
-| Teil | Pfad | Stand (geprüft 2026-11-22) |
+| Teil | Pfad | Stand (geprüft 2026-11-26) |
 |---|---|---|
-| Rust-Kern (`Transport`-Trait, Capability-Modell, Diagnose, Registry, Event-Store) | `crates/aosu-core` | 76/76 Tests grün (75 Unit + 1 E2E mit echter Aufzeichnung) |
+| Rust-Kern (`Transport`-Trait, Capability-Modell, Diagnose, Registry, Event-Store) | `crates/aosu-core` | 81/81 Tests grün, 3 live-Probes bewusst ignoriert (1 E2E mit echter Aufzeichnung) |
+| Echter Cloud-Login, Geräteliste und Firmware-Abfrage | `crates/aosu-core/src/transports/cloud` | live verifiziert: HTTP 200, `errno=0`, 5 Geräte, 5 Firmware-Versionen; Credentials nur im RAM |
 | Wiederverwendbares Tuya-LAN-Protokoll | `crates/tuya-lan-protocol` | 5/5 Tests grün, markenunabhängig |
-| Desktop-App (Tauri + React), volle Produktoberfläche | `app/` | 50/50 Vitest, 7/7 Playwright |
+| Desktop-App (Tauri + React), volle Produktoberfläche | `app/` | 53/53 Vitest, 7/7 Playwright; Offline-Fallback kennt alle 5 Registry-Transporte |
 | Home-Assistant-Integration (Modell + Notification-Bridge) | `homeassistant/custom_components/aosu` | 12/12 Tests grün |
 | Push-Brücke, Event-Pipeline und Store | `tools/notification_bridge.py`, `tools/event_pipeline.py`, `tools/event_store.py` | 44/44 Tests grün (14 Brücke, 16 Pipeline, 10 Store, 4 LAN-Probe) |
 | Passive LAN-Diagnose | `tools/lan_probe.py` | über die UI erreichbar |
