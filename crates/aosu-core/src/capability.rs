@@ -40,6 +40,9 @@ pub enum BlockedReason {
     LocalKeyRequired,
     PinningUnresolved,
     NotImplementedYet,
+    /// Cloud-storage playback needs a callback URL Tuya can reach to fetch
+    /// the short-lived decryption key (documented HLS API).
+    CallbackUrlRequired,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

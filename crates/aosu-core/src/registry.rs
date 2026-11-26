@@ -18,6 +18,7 @@ use crate::transports::cloud::CloudTransport;
 use crate::transports::local::LocalTransport;
 use crate::transports::mock::MockTransport;
 use crate::transports::notification_log::NotificationLogTransport;
+use crate::transports::tuya_cloud::{TuyaCloudTransport, TuyaConfig};
 use crate::transports::vendor2_mock::Vendor2MockTransport;
 use std::collections::HashMap;
 
@@ -102,6 +103,42 @@ impl TransportRegistry {
                 .unwrap_or_else(|| DEFAULT_PUSH_LOG_PATH.to_string());
             Box::new(NotificationLogTransport::new(path)) as Box<dyn Transport>
         });
+        // Official Tuya Cloud adapter. All values are RAM-only and must be
+        // supplied by the user from their own IoT project.
+        r.register("tuya-cloud", |cfg| {
+            let get = |key: &str| cfg.options.get(key).cloned().unwrap_or_default();
+            let config = TuyaConfig {
+                client_id: get("clientId"),
+                client_secret: get("clientSecret"),
+                region: {
+                    let region = get("region");
+                    if region.is_empty() {
+                        "eu".to_string()
+                    } else {
+                        region
+                    }
+                },
+                uid: cfg.options.get("uid").cloned().filter(|s| !s.is_empty()),
+                go2rtc_base: cfg
+                    .options
+                    .get("go2rtcBase")
+                    .cloned()
+                    .filter(|s| !s.is_empty()),
+                callback_base: cfg
+                    .options
+                    .get("callbackBase")
+                    .cloned()
+                    .filter(|s| !s.is_empty()),
+                ptz_enabled: cfg
+                    .options
+                    .get("ptzEnabled")
+                    .is_some_and(|v| v.eq_ignore_ascii_case("true")),
+            };
+            Box::new(
+                TuyaCloudTransport::new(config)
+                    .expect("TuyaCloudTransport construction never fails without credentials"),
+            ) as Box<dyn Transport>
+        });
         r
     }
 
@@ -139,7 +176,14 @@ mod tests {
         names.sort();
         assert_eq!(
             names,
-            vec!["cloud", "kestrel-mock", "local", "mock", "push-log"]
+            vec![
+                "cloud",
+                "kestrel-mock",
+                "local",
+                "mock",
+                "push-log",
+                "tuya-cloud"
+            ]
         );
     }
 

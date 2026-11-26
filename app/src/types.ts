@@ -83,6 +83,38 @@ export type Capability =
 
 export type CapabilityReport = Partial<Record<Capability, Support>>;
 
+// -- Media and device control. URLs are short-lived and RAM-only; the app
+// never persists them. Errors are surfaced instead of fake media.
+
+export interface MediaStreamInfo {
+  description: string;
+  url: string | null;
+  protocol: string | null;
+  sessionId: string | null;
+}
+
+export interface AudioChannelInfo {
+  description: string;
+  url: string | null;
+  protocol: string | null;
+  twoWay: boolean;
+}
+
+export interface RecordingInfo {
+  device: string;
+  startedAtEpochSeconds: number;
+  durationSecs: number;
+  source: string;
+  url: string | null;
+  thumbnailUrl: string | null;
+}
+
+export type DeviceCommand =
+  | { type: "setLight"; on: boolean }
+  | { type: "setSiren"; on: boolean }
+  | { type: "ptz"; pan: number; tilt: number; durationMs: number }
+  | { type: "ptzStop" };
+
 export interface PortCheck {
   port: number;
   open: boolean;

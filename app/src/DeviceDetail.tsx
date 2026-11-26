@@ -1,12 +1,30 @@
 import { useState } from "react";
-import type { AppNotification, Device, DeviceEvent } from "./types";
+import { api } from "./api";
+import { ErrorNotice } from "./ErrorNotice";
 import { HealthBadge } from "./HealthBadge";
 import { SeverityBadge } from "./SeverityBadge";
+import type {
+  AppNotification,
+  AudioChannelInfo,
+  Device,
+  DeviceCommand,
+  DeviceEvent,
+  MediaStreamInfo,
+  RecordingInfo,
+} from "./types";
 
-type DetailTab = "overview" | "diagnostics" | "transport" | "events" | "notifications" | "metadata";
+type DetailTab =
+  | "overview"
+  | "media"
+  | "diagnostics"
+  | "transport"
+  | "events"
+  | "notifications"
+  | "metadata";
 
 const TABS: { key: DetailTab; label: string }[] = [
   { key: "overview", label: "Übersicht" },
+  { key: "media", label: "Medien & Steuerung" },
   { key: "diagnostics", label: "Diagnose" },
   { key: "transport", label: "Transport" },
   { key: "events", label: "Ereignisse" },
@@ -35,6 +53,29 @@ export function DeviceDetail({
   const [tab, setTab] = useState<DetailTab>("overview");
   const deviceEvents = events.filter((e) => e.device === device.id);
   const deviceNotifications = notifications.filter((n) => n.device === device.id);
+  const [stream, setStream] = useState<MediaStreamInfo | null>(null);
+  const [audio, setAudio] = useState<AudioChannelInfo | null>(null);
+  const [recordings, setRecordings] = useState<RecordingInfo[] | null>(null);
+  const [mediaError, setMediaError] = useState<{ action: string; message: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function runMediaAction(action: string, fn: () => Promise<void>) {
+    setBusy(true);
+    setMediaError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setMediaError({ action, message: String(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function send(command: DeviceCommand) {
+    await runMediaAction("Befehl senden", async () => {
+      await api.sendDeviceCommand(device.id, command);
+    });
+  }
 
   return (
     <div>
@@ -81,6 +122,136 @@ export function DeviceDetail({
           <dt className="text-gray-500">Firmware</dt>
           <dd>{device.firmwareVersion ?? <UnknownField />}</dd>
         </dl>
+      )}
+
+      {tab === "media" && (
+        <div className="space-y-4 text-sm">
+          {mediaError && (
+            <ErrorNotice
+              explanation={`${mediaError.action} fehlgeschlagen: ${mediaError.message}`}
+              probableCause="Der aktive Transport unterstützt diese Funktion nicht oder die Zugangsdaten wurden noch nicht konfiguriert."
+              suggestedAction="Bei tuya-cloud: eigenes IoT-Projekt verbinden, Optional go2rtc/Callback-URL prüfen und PTZ erst nach STOP-Test freischalten."
+            />
+          )}
+
+          <section className="space-y-2 border rounded p-2">
+            <h3 className="font-medium">Live & Gegensprechen</h3>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                className="px-2 py-1 rounded border bg-white disabled:opacity-50"
+                disabled={busy}
+                onClick={() =>
+                  void runMediaAction("Live-Stream", async () => {
+                    setStream(await api.liveStream(device.id));
+                  })
+                }
+              >
+                Live-Stream öffnen
+              </button>
+              <button
+                className="px-2 py-1 rounded border bg-white disabled:opacity-50"
+                disabled={busy}
+                onClick={() =>
+                  void runMediaAction("Gegensprechen", async () => {
+                    setAudio(await api.openTalk(device.id));
+                  })
+                }
+              >
+                Gegensprechen öffnen
+              </button>
+            </div>
+            {stream && (
+              <p className="text-xs text-gray-600">
+                {stream.protocol ?? "unbekanntes Protokoll"} – {stream.description}
+                {stream.url && (
+                  <>
+                    {" · "}
+                    <a className="text-blue-600 underline" href={stream.url} target="_blank" rel="noreferrer">
+                      Stream öffnen
+                    </a>
+                  </>
+                )}
+              </p>
+            )}
+            {audio && (
+              <p className="text-xs text-gray-600">
+                {audio.protocol ?? "unbekanntes Protokoll"} – {audio.twoWay ? "Zwei-Wege-Audio" : "nur Hören"}
+                {audio.url && (
+                  <>
+                    {" · "}
+                    <a className="text-blue-600 underline" href={audio.url} target="_blank" rel="noreferrer">
+                      Audio öffnen
+                    </a>
+                  </>
+                )}
+              </p>
+            )}
+          </section>
+
+          <section className="space-y-2 border rounded p-2">
+            <h3 className="font-medium">Cloud-Aufnahmen</h3>
+            <button
+              className="px-2 py-1 rounded border bg-white disabled:opacity-50"
+              disabled={busy}
+              onClick={() =>
+                void runMediaAction("Aufnahmen laden", async () => {
+                  const to = Math.floor(Date.now() / 1000);
+                  setRecordings(await api.listRecordings(device.id, to - 86_400, to));
+                })
+              }
+            >
+              Aufnahmen der letzten 24 Stunden laden
+            </button>
+            {recordings && recordings.length === 0 && (
+              <p className="text-xs text-gray-500">Keine Aufnahmen im Zeitraum.</p>
+            )}
+            {recordings && recordings.length > 0 && (
+              <ul className="divide-y divide-gray-100">
+                {recordings.map((r, i) => (
+                  <li key={i} className="py-1 flex items-center justify-between gap-2">
+                    <span>
+                      {new Date(r.startedAtEpochSeconds * 1000).toLocaleString("de-DE")} ·{" "}
+                      {r.durationSecs}s · {r.source}
+                    </span>
+                    {r.url && (
+                      <a className="text-blue-600 underline" href={r.url} target="_blank" rel="noreferrer">
+                        Abspielen
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="space-y-2 border rounded p-2">
+            <h3 className="font-medium">Gerätebefehle</h3>
+            <div className="flex gap-2 flex-wrap">
+              <button disabled={busy} className="px-2 py-1 rounded border bg-white" onClick={() => void send({ type: "setLight", on: true })}>
+                Licht an
+              </button>
+              <button disabled={busy} className="px-2 py-1 rounded border bg-white" onClick={() => void send({ type: "setLight", on: false })}>
+                Licht aus
+              </button>
+              <button disabled={busy} className="px-2 py-1 rounded border bg-white" onClick={() => void send({ type: "setSiren", on: true })}>
+                Sirene an
+              </button>
+              <button disabled={busy} className="px-2 py-1 rounded border bg-white" onClick={() => void send({ type: "setSiren", on: false })}>
+                Sirene aus
+              </button>
+            </div>
+            <div className="flex gap-2 flex-wrap" aria-label="PTZ-Steuerung">
+              <button disabled={busy} className="px-2 py-1 rounded border bg-white" onClick={() => void send({ type: "ptz", pan: 0, tilt: 1, durationMs: 300 })}>↑</button>
+              <button disabled={busy} className="px-2 py-1 rounded border bg-white" onClick={() => void send({ type: "ptz", pan: -1, tilt: 0, durationMs: 300 })}>←</button>
+              <button disabled={busy} className="px-2 py-1 rounded border bg-white font-medium" onClick={() => void send({ type: "ptzStop" })}>STOPP</button>
+              <button disabled={busy} className="px-2 py-1 rounded border bg-white" onClick={() => void send({ type: "ptz", pan: 1, tilt: 0, durationMs: 300 })}>→</button>
+              <button disabled={busy} className="px-2 py-1 rounded border bg-white" onClick={() => void send({ type: "ptz", pan: 0, tilt: -1, durationMs: 300 })}>↓</button>
+            </div>
+            <p className="text-xs text-gray-500">
+              PTZ ist serverseitig standardmäßig blockiert und erst nach einem erfolgreichen STOPP-Test freizuschalten.
+            </p>
+          </section>
+        </div>
       )}
 
       {tab === "diagnostics" && (

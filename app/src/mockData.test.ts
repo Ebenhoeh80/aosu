@@ -8,6 +8,7 @@ const BUILTIN_TRANSPORTS = [
   "local",
   "mock",
   "push-log",
+  "tuya-cloud",
 ];
 
 const ALL_CAPABILITIES: Capability[] = [

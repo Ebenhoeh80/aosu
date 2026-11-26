@@ -20,12 +20,13 @@ Siehe `docs/architecture.md` für die Begründung der Phaseneinteilung (gebaut n
 - [x] Diagnose-Knopf in der UI verdrahten (`run_network_diagnostics`, Teil des Diagnose-Centers).
 - [x] Rust-Build lokal verifiziert (siehe gelöster Blocker unten) — voller Workspace inkl. Tauri/WebView2 baut, 17/17 Tests grün, Clippy sauber.
 - [x] **Echter Cloud-Login + Gerätebestand + Firmware-Abfrage** (2026-11-26): `crates/aosu-core/src/transports/cloud/client.rs` liest die AOSU-API mit zur Laufzeit aus der nutzerbereitgestellten APK extrahiertem Signatur-/Verschlüsselungsmaterial. Live-Smoke-Test gegen das eigene Konto: HTTP 200, `errno=0`, 5 Geräte, 5 Firmware-Versionen. Zugangsdaten und Sessions bleiben nur im RAM; das Pinning-Experiment der Android-App ist für diesen Pfad **nicht** erforderlich.
+- [x] **Lesender Cloud-Ereignis-Feed** (2026-11-26): `/v1/event/getImageList` wurde mit `sn[]` + `count` live geprüft (`errno=0`, Felder `data.list[].timeInfo.begin/end`, `eventType`, `uniformType`, `aiVision`, `sn`). Normalisierung erlaubt nur bekannte Kategorien; Bild-URLs, Event-IDs und KI-Payloads werden verworfen. Das Testkonto lieferte aktuell 0 Zeilen — der Endpunkt ist belegt, echte Ereignisinhalte nicht. Unit-Tests prüfen Zeitformate und Zuordnung ohne Live-Daten.
 
 ## Phase 2 — abhängig von externen Entscheidungen
 
 - [ ] Echte `LocalTransport`-Authentifizierung — blockiert durch fehlenden `local_key`-Beschaffungsweg. Der lesende Cloud-Detail-Endpunkt `/v1/dev/getInfoBySn` wurde 2026-11-26 mit vier Seriennummern-Varianten und vier Parameternamen geprüft: durchgehend `errno=1`, ein Schlüsselfeld ist dort nicht erreichbar.
-- [ ] Cloud-Medien, Gegensprechen, Aufnahmen, PTZ und Befehle — keine dokumentierte AOSU-API; der einzige öffentlich belegte Video-/PTZ-Pfad (`tapion69/smart-aosu-cloud`) steht unter PolyForm Strict 1.0.0 und darf nicht in dieses MIT-Projekt übernommen werden.
-- [ ] Tuya-OEM-Adapter als **optionaler, nutzerfreigegebener** Pfad: Die AOSU-Login-Antwort enthält nachweislich die Feldnamen `countryCode`, `tuyaUsername` und `tuyaUid`. Ein daraus abgeleiteter OEM-Login setzt jedoch OEM-App-Zugangsdaten aus der APK und eine Zustimmung zur Tuya-Nutzung voraus (Konto-/ToS-Risiko) — nicht ohne ausdrückliche Nutzerentscheidung freigeschaltet.
+- [x] **Offizieller Tuya-Cloud-Adapter angelegt und verdrahtet** (2026-11-26): `crates/aosu-core/src/transports/tuya_cloud.rs` nutzt ausschließlich ein eigenes IoT-Projekt des Nutzers (`client_id`/`client_secret`), HMAC-SHA256-Signatur, Token und die dokumentierten OpenAPI-Endpunkte. Konten werden über „Link App Account" verknüpft; keine Secrets aus der AOSU-APK. Live-URL (HLS), WebRTC-Konfiguration via go2rtc, DP-Befehle, PTZ-Payloads und Cloud-Playback sind implementiert und unit-getestet, aber **nicht live verifiziert**. PTZ ist standardmäßig gesperrt und benötigt einen erfolgreichen STOP-Test; Aufnahmen benötigen eine öffentliche HTTPS-Callback-URL.
+- [ ] Tuya-OEM-Adapter aus den AOSU-Identitätsfeldern (`countryCode`, `tuyaUsername`, `tuyaUid`) als **optionaler, nutzerfreigegebener** Pfad: Er setzt OEM-App-Zugangsdaten aus der APK und eine Zustimmung zur Tuya-Nutzung voraus (Konto-/ToS-Risiko) — nicht ohne ausdrückliche Nutzerentscheidung freigeschaltet. Der offizielle Adapter oben ist die lizenzrechtlich saubere Alternative.
 
 ## Event-Pipeline (abgeschlossen, 2026-11-22)
 
@@ -58,11 +59,11 @@ Die Event-Pipeline als reifste Produktionsfunktion genommen und zu einer vollst�
 Ziel: vollständige Nutzerreise gegen Mock-Geräte, unabhängig vom Ausgang von Phase 2.
 
 - [x] **Gerätebestand**: Suche, Filter (Hersteller/Status), Sortierung, Gruppierung nach Hersteller, Statusübersicht (`app/src/DeviceInventory.tsx`).
-- [x] **Geräte-Detail**: Übersicht/Diagnose/Transport/Ereignisse/Benachrichtigungen/Metadaten-Tabs, unbekannte Felder werden explizit als „unbekannt" gezeigt statt versteckt (`app/src/DeviceDetail.tsx`).
+- [x] **Geräte-Detail**: Übersicht/**Medien & Steuerung**/Diagnose/Transport/Ereignisse/Benachrichtigungen/Metadaten-Tabs, unbekannte Felder werden explizit als „unbekannt" gezeigt statt versteckt (`app/src/DeviceDetail.tsx`). Der Medien-Tab ruft echte Tauri-Kommandos auf; ohne Unterstützung durch den Transport erscheint eine ehrliche Fehlermeldung statt eines erfundenen Streams oder einer erfundenen Bewegung.
 - [x] **Ereignisverlauf**: Zeitachse, Such-/Schweregrad-/Art-Filter, Gruppierung aufeinanderfolgender gleicher Ereignisse (`app/src/EventHistory.tsx`).
 - [x] **Benachrichtigungs-Center**: Schweregrad-Filter, Gelesen/Ungelesen, Bestätigungs-Workflow (`app/src/NotificationCenter.tsx`).
 - [x] **Diagnose-Center**: Fähigkeits-Report + Netzwerk-Scan + Laufzeitinfo, JSON-Export (`app/src/DiagnosticsCenter.tsx`, `aosu_core::DiagnosticsBundle`).
-- [x] **Einstellungen**: echte Transport-Umschaltung über die Registry; Abschnitte ohne echten Unterbau sind explizit als „noch nicht implementiert" markiert, nicht versteckt (`app/src/Settings.tsx`).
+- [x] **Einstellungen**: echte Transport-Umschaltung über die Registry, inklusive session-only Konfiguration für `cloud` und `tuya-cloud` (kein Passwort/`client_secret` auf Platte); Abschnitte ohne echten Unterbau sind explizit als „noch nicht implementiert" markiert, nicht versteckt (`app/src/Settings.tsx`).
 - [x] **Onboarding**: geführte Einführung (was ist echt/simuliert/experimentell), überspringbar, einmalig (`app/src/Onboarding.tsx`).
 - [x] **Offline-Modus**: `app/src/api.ts` fällt bei jedem Tauri-Aufruf auf Mock-Daten zurück; die gesamte App inkl. E2E-Tests läuft ohne jede Tauri-Laufzeit.
 - [x] **Fehlerbehandlung**: `ErrorNotice`-Komponente (Erklärung + wahrscheinliche Ursache + Vorschlag) statt roher Fehlermeldungen.
@@ -82,4 +83,7 @@ Ziel: vollständige Nutzerreise gegen Mock-Geräte, unabhängig vom Ausgang von 
 | Blocker | Auswirkung | Workaround |
 |---|---|---|
 | ~~MSVC-Build-Tools fehlen, Installation erfordert Admin-Elevation~~ **gelöst** | — | Workaround statt MSVC: `winget install BrechtSanders.WinLibs.POSIX.UCRT --scope user` (kein Admin nötig) + `rustup toolchain install stable-x86_64-pc-windows-gnu` + `rustup default stable-x86_64-pc-windows-gnu` + projektlokale `.cargo/config.toml` mit MinGW-Linkerpfad. Damit baut der volle Workspace inkl. Tauri/WebView2 lokal. CI nutzt weiterhin natives MSVC auf `windows-latest`. |
-| Kein GitHub-Remote konfiguriert | Keine echten Issues/Milestones anlegbar, CI läuft nicht wirklich | Roadmap lokal als Markdown geführt; GitHub-Repo-Erstellung ist eine Nutzerentscheidung (Name, öffentlich/privat) |
+| ~~Kein GitHub-Remote konfiguriert~~ **erledigt 22.11.2026** | — | `origin` = `https://github.com/Ebenhoeh80/aosu` (public); PR #14 mit read-only Cloud-Transport am 26.11. gemergt, alle Checks grün |
+| Kein eigenes Tuya-IoT-Projekt / keine verknüpften Konten | Der offizielle Tuya-Adapter ist kompiliert und unit-getestet, aber nicht live verifiziert | Nutzer legt ein IoT-Projekt an und verknüpft die App-Konten über „Link App Account"; Geheimnisse bleiben session-only |
+| Keine öffentliche HTTPS-Callback-URL / kein lokales go2rtc / kein STOP-Test | Cloud-Aufnahmen, Gegensprechen und PTZ bleiben auch mit Tuya-Projekt blockiert | Optional `callbackBase`, `go2rtcBase` und `ptzEnabled` erst nach erfolgreichem STOP-Test setzen |
+| Kein Release-Tag und kein Release-Workflow | Kein Release autonom auslösbar | Releases nur per Tag `v*` nach Manifest-Prüfung; Infrastruktur muss zuerst geschaffen werden |

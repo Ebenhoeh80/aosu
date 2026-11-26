@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -33,5 +33,27 @@ describe("Settings", () => {
   it("marks the updates section as not implemented rather than hiding it", () => {
     render(<Settings />);
     expect(screen.getByText(/Noch nicht implementiert/)).toBeInTheDocument();
+  });
+
+  it("passes Tuya credentials only to the session and never persists them", async () => {
+    render(<Settings />);
+    const button = await screen.findByText("tuya-cloud", { selector: "button" });
+    await userEvent.type(screen.getByLabelText("Client ID"), "cid-only-in-ram");
+    await userEvent.type(
+      screen.getByLabelText("Client Secret (nur Sitzung)"),
+      "secret-only-in-ram",
+    );
+    await userEvent.click(button);
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("switch_transport", {
+        name: "tuya-cloud",
+        config: expect.objectContaining({
+          clientId: "cid-only-in-ram",
+          clientSecret: "secret-only-in-ram",
+        }),
+      }),
+    );
+    expect(JSON.stringify(Object.entries(localStorage))).not.toContain("secret-only-in-ram");
   });
 });

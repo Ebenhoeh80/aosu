@@ -178,6 +178,7 @@ impl Transport for MockTransport {
             Some(d) if d.health == HealthStatus::Unsupported => Err(TransportError::Unsupported),
             Some(d) => Ok(MediaStreamHandle {
                 description: format!("mock live stream for {}", d.id.0),
+                ..Default::default()
             }),
         }
     }
@@ -185,6 +186,8 @@ impl Transport for MockTransport {
     fn talk(&self, device: &DeviceId) -> Result<AudioChannelHandle> {
         Ok(AudioChannelHandle {
             description: format!("mock audio channel for {}", device.0),
+            two_way: true,
+            ..Default::default()
         })
     }
 
@@ -194,6 +197,8 @@ impl Transport for MockTransport {
             started_at: range.from,
             duration_secs: 30,
             source: RecordingSource::LocalBaseStation,
+            url: None,
+            thumbnail_url: None,
         }])
     }
 

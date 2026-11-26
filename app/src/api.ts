@@ -2,14 +2,18 @@ import { invoke } from "@tauri-apps/api/core";
 import * as mock from "./mockData";
 import type {
   AppNotification,
+  AudioChannelInfo,
   CapabilityReport,
   Device,
   DeviceActivity,
+  DeviceCommand,
   DeviceEvent,
   DiagnosticsBundle,
   EventAnalytics,
   EventQueryFilter,
+  MediaStreamInfo,
   PortCheck,
+  RecordingInfo,
   StoredEvent,
 } from "./types";
 
@@ -86,11 +90,46 @@ export const api = {
 
   switchTransport: (
     name: string,
-    config?: { host?: string; path?: string; email?: string; password?: string; apkPath?: string },
+    config?: {
+      host?: string;
+      path?: string;
+      email?: string;
+      password?: string;
+      apkPath?: string;
+      clientId?: string;
+      clientSecret?: string;
+      region?: string;
+      uid?: string;
+      go2rtcBase?: string;
+      callbackBase?: string;
+      ptzEnabled?: boolean;
+    },
   ): Promise<void> =>
     callOrMock("switch_transport", { name, config }, () => {
       mockActiveTransport = name;
     }),
+
+  // -- Media/commands deliberately have no mock fallback: inventing a
+  // stream or a motor movement would be unsafe and dishonest.
+  liveStream: (device: string): Promise<MediaStreamInfo> =>
+    callRequired("live_stream", { device }),
+
+  openTalk: (device: string): Promise<AudioChannelInfo> =>
+    callRequired("open_talk", { device }),
+
+  listRecordings: (
+    device: string,
+    fromEpochSeconds: number,
+    toEpochSeconds: number,
+  ): Promise<RecordingInfo[]> =>
+    callRequired("list_recordings", {
+      device,
+      fromEpochSeconds,
+      toEpochSeconds,
+    }),
+
+  sendDeviceCommand: (device: string, command: DeviceCommand): Promise<void> =>
+    callRequired("send_device_command", { device, command }),
 
   exportDiagnostics: (networkHost?: string): Promise<string> =>
     callOrMock("export_diagnostics", { networkHost }, () =>

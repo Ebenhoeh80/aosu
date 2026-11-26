@@ -1,4 +1,4 @@
-# Architektur: Aosu-Desktop-Client (Stand 2026-11-21, nach H1L-Netzwerkbefunden)
+# Architektur: Aosu-Desktop-Client (Stand 2026-11-26, nach H1L-Netzwerkbefunden und Cloud-/Tuya-Prüfung)
 
 ## Doppeltes Ziel: Aosu-Client und Tuya-Plattform
 
@@ -18,7 +18,7 @@ Transporte (austauschbar, siehe Abschnitt 3-4)
 
 - **Belegt:** Dies ist die bereits in ADR 0001 festgelegte Zielarchitektur, keine neue Annahme.
 - **Unknown:** keiner, reine Design-Entscheidung.
-- **Heute vollständig baubar:** Projektgerüst (Tauri+Rust+React/TS/Vite/Tailwind), CI mit Lint/Test, Vitest+Playwright-Grundgerüst, komplette UI (Geräteliste, Einstellungen, Ereignis-Feed, Live-Bild-Platzhalter) gegen eine **Mock-Transport-Implementierung** (Fake-Geräteliste, Fake-Ereignisse) — ermöglicht eine vollständig vorführbare App **ohne jede Protokoll-Auth**.
+- **Heute vollständig baubar:** Projektgerüst (Tauri+Rust+React/TS/Vite/Tailwind), CI mit Lint/Test, Vitest+Playwright, komplette UI (Geräteliste, Geräte-Detail inkl. Medien-Tab, Einstellungen, Ereignis-Feed) gegen eine **Mock-Transport-Implementierung** für Inventar/Ereignisse. Der Medien-Tab hat bewusst **keinen** Mock-Fallback: Streams, Audio und Befehle kommen immer vom aktiven Transport, sonst erscheint eine ehrliche Fehlermeldung.
 
 ## 2. Abstraktionsschicht: `trait Transport`
 
@@ -64,10 +64,13 @@ trait Transport {
 | Network-Security-Config ohne Pin-Set, `cleartextTrafficPermitted` nur als Basis | **Belegt** |
 | Programmatischer `ThingCertificatePinner` in der Tuya-SDK-Schicht aktiv genutzt | **Belegt** |
 | Ob die Glazero-Schicht selbst (`api.aosulife.com`) zusätzlich programmatisch gepinnt ist | **Unbekannt**, Experiment dafür vorbereitet, aber (noch) nicht freigegeben/ausgeführt |
-| Medien-Handshake erfordert Tuya-SDK-Sitzungsschlüssel aus OEM-Secret | **Vermutet** (allgemeines Tuya-Architekturmuster, nicht Aosu-spezifisch verifiziert) |
+| Medien-Handshake erfordert Tuya-SDK-Sitzungsschlüssel aus OEM-Secret | **Vermutet für den OEM-Pfad** (allgemeines Tuya-Architekturmuster, nicht Aosu-spezifisch verifiziert) |
+| `/v1/event/getImageList` antwortet `errno=0` mit `data.list[].timeInfo`/`eventType`/`uniformType`/`aiVision`/`sn` | **Belegt** (eigene lesende Prüfung 2026-11-26; Testkonto liefert aktuell 0 Zeilen) |
+| Offizielle Tuya-OpenAPI mit eigenem IoT-Projekt und „Link App Account" ist der lizenzrechtlich saubere Medienpfad | **Belegt** (Tuya-Doku 2026-11-26); Adapter implementiert, aber nicht live verifiziert |
 
-- **Abhängigkeitsrisiko: mittel** — Login und Gerätebestand sind ohne Pinning-Umgehung real erreichbar; Medien-, Event- und Steuerpfade bleiben unbelegt.
-- **Heute real funktionierend (2026-11-26):** `CloudTransport` mit echter Signaturberechnung, Login, Geräteliste und Firmware-Abfrage; verifiziert mit HTTP 200/`errno=0`, 5 Geräten und 5 Firmware-Versionen. Zugangsdaten, Session-Tokens und APK-Material bleiben ausschließlich im RAM. `live`, `talk`, `recordings`, `command` und `events` geben weiterhin ehrlich `Unsupported` zurück; die Tuya-Identitätsfelder der Login-Antwort sind ein belegter, aber nicht freigeschalteter Ansatz für einen späteren OEM-Adapter.
+- **Abhängigkeitsrisiko: mittel** — Login, Gerätebestand, Firmware und der Ereignis-Feed sind ohne Pinning-Umgehung real erreichbar. Medien- und Steuerpfade bleiben über die AOSU-API unbelegt; der Tuya-Adapter ist implementiert, aber ohne eigenes IoT-Projekt nicht live geprüft.
+- **Heute real funktionierend (2026-11-26):** `CloudTransport` mit echter Signaturberechnung, Login, Geräteliste, Firmware-Abfrage und normalisiertem Ereignis-Feed; verifiziert mit HTTP 200/`errno=0`, 5 Geräten und 5 Firmware-Versionen. Zugangsdaten, Session-Tokens und APK-Material bleiben ausschließlich im RAM; Bild-URLs, Event-IDs und KI-Payloads werden verworfen. `live`, `talk`, `recordings` und `command` geben weiterhin ehrlich `Unsupported` zurück. Die Tuya-Identitätsfelder der Login-Antwort sind ein belegter, aber nicht freigeschalteter Ansatz für einen OEM-Adapter.
+- **Offizieller Tuya-Adapter (2026-11-26):** `tuya-cloud` in der Registry nutzt nur `client_id`/`client_secret` aus einem eigenen IoT-Projekt, HMAC-SHA256, Token und dokumentierte Endpunkte für Live-HLS, go2rtc-WebRTC, DP-Befehle, PTZ-Payloads und Cloud-Playback. Keine APK-Secrets, keine Geheimnisse auf Platte oder im Log. Live-, Talk-, Aufnahme- und Befehls-UI sind darüber bedienbar, aber erst nach erfolgreicher Live-Prüfung als „unterstützt" zu betrachten. Constraints: go2rtc für Zwei-Wege-Audio, öffentliche HTTPS-Callback-URL für HLS-Schlüssel, PTZ erst nach STOP-Test.
 
 ## 5. Optionale Home-Assistant-Integrationsschicht
 
@@ -79,8 +82,8 @@ trait Transport {
 
 ## 6. Plugin-Architektur
 
-- Design-Entscheidung, kein externes Abhängigkeitsrisiko: Registrierung weiterer `Transport`-Implementierungen (künftig z. B. eine offizielle Aosu-API, falls je gewährt, oder ein Thingino-basierter lokaler Client für entsprechend geflashte Hardware).
-- **Heute baubar:** Enum- oder Trait-Object-basierte Registry, Konfigurationsauswahl, dokumentierter Erweiterungspunkt.
+- Design-Entscheidung, kein externes Abhängigkeitsrisiko: Registrierung weiterer `Transport`-Implementierungen über `TransportRegistry` (u. a. `cloud`, `push-log`, `tuya-cloud`; künftig z. B. eine offizielle Aosu-API, falls je gewährt, oder ein Thingino-basierter lokaler Client für entsprechend geflashte Hardware).
+- **Heute baubar:** Trait-Object-basierte Registry, Konfigurationsauswahl, dokumentierter Erweiterungspunkt. Die UI zeigt nur echte Antworten des aktiven Transports; nicht unterstützte Aktionen erscheinen als Fehler, nicht als simulierte Daten.
 
 ## 7. Logging und Diagnose
 
@@ -103,6 +106,6 @@ trait Transport {
 
 **Phase 2 — abhängig von externen Entscheidungen, nicht mir allein überlassen:**
 10. Echte `LocalTransport`-Authentifizierung — blockiert durch fehlenden `local_key`-Beschaffungsweg.
-11. Echte `CloudTransport`-Authentifizierung — blockiert durch offenes Pinning-Experiment und die unverändert bestehende Grenze, ein gefundenes Signatur-Geheimnis nicht selbst zu operationalisieren.
+11. ~~Echte `CloudTransport`-Authentifizierung — blockiert durch offenes Pinning-Experiment.~~ **Erledigt 2026-11-26:** Login, Geräteliste, Firmware und Ereignis-Feed laufen live ohne Pinning-Umgehung; nur APK-Material zur Laufzeit, keine Geheimnisse auf Platte.
 
-Phase 0 und 1 sind vollständig unabhängig von jeder noch offenen Protokollfrage umsetzbar und liefern eine lauffähige, testbare, vorführbare Anwendung.
+Phase 0 und 1 sind vollständig umgesetzt und liefern eine lauffähige, testbare, vorführbare Anwendung. Phase 2 ist nicht mehr vollständig blockiert: Inventar/Ereignisse sind echt, Medien/Befehle benötigen entweder den noch nicht live verifizierten offiziellen Tuya-Adapter oder eine ausdrückliche Nutzerentscheidung zum OEM-Pfad.

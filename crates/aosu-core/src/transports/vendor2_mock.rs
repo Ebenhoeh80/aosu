@@ -75,6 +75,7 @@ impl Transport for Vendor2MockTransport {
         if self.devices.iter().any(|d| &d.id == device) {
             Ok(MediaStreamHandle {
                 description: format!("fictional Kestrel stream for {}", device.0),
+                ..Default::default()
             })
         } else {
             Err(TransportError::NotFound(device.0.clone()))
