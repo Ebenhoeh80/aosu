@@ -282,23 +282,18 @@ impl TuyaCloudClient {
     }
 
     /// Device list of the linked app account. `from=sharing` covers devices
-    /// owned by the OEM app but shared into the user's IoT project.
+    /// shared into the project; some projects return them only without that
+    /// filter, so an empty sharing result is retried unfiltered.
     pub fn devices(&self) -> Result<Vec<Device>> {
         let uid = self.uid()?;
         let path = format!("/v1.0/users/{uid}/devices");
-        let value = self.request(
-            "GET",
-            &path,
-            &[("from", "sharing"), ("page_no", "1"), ("page_size", "100")],
-            "",
-        )?;
-        let mut out = Vec::new();
-        if let Some(list) = value.get("devices").and_then(|v| v.as_array()) {
-            for item in list {
-                if let Some(dev) = map_device(item) {
-                    out.push(dev);
-                }
-            }
+        let paging = [("page_no", "1"), ("page_size", "100")];
+        let mut query = Vec::with_capacity(3);
+        query.push(("from", "sharing"));
+        query.extend_from_slice(&paging);
+        let mut out = parse_devices(&self.request("GET", &path, &query, "")?);
+        if out.is_empty() {
+            out = parse_devices(&self.request("GET", &path, &paging, "")?);
         }
         Ok(out)
     }
@@ -430,6 +425,15 @@ pub fn command_payload(cmd: &Command) -> Option<String> {
         }
     };
     Some(serde_json::json!({"commands": [{"code": code, "value": value}]}).to_string())
+}
+
+/// Tuya has returned both a bare array and `{ devices: [...] }` for the
+/// device-list endpoint, depending on the query and project configuration.
+fn parse_devices(value: &serde_json::Value) -> Vec<Device> {
+    let items = value
+        .as_array()
+        .or_else(|| value.get("devices").and_then(|v| v.as_array()));
+    items.into_iter().flatten().filter_map(map_device).collect()
 }
 
 fn map_device(value: &serde_json::Value) -> Option<Device> {
@@ -715,6 +719,21 @@ mod tests {
             "callback=https%3A%2F%2Fexample.org%2Fkey&time_g_t=100&time_l_t=200"
         );
         assert_eq!(canonical_url("/v1.0/devices", &[]), "/v1.0/devices");
+    }
+
+    #[test]
+    fn device_list_accepts_bare_array_and_wrapped_result() {
+        let bare = serde_json::json!([{"id": "dev1", "name": "Kam", "online": true}]);
+        let wrapped = serde_json::json!({"devices": [{"device_id": "dev2", "online": false}]});
+        let bare = parse_devices(&bare);
+        let wrapped = parse_devices(&wrapped);
+        assert_eq!(bare.len(), 1);
+        assert_eq!(wrapped.len(), 1);
+        assert_eq!(bare[0].id.0, "dev1");
+        assert!(bare[0].online);
+        assert_eq!(wrapped[0].id.0, "dev2");
+        assert!(!wrapped[0].online);
+        assert!(parse_devices(&serde_json::json!({})).is_empty());
     }
 
     #[test]
