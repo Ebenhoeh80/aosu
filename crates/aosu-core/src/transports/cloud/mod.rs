@@ -86,12 +86,12 @@ impl Transport for CloudTransport {
         client.get_device_list(&session)
     }
 
-    fn events(&self, _since: Timestamp) -> Result<Vec<Event>> {
-        // Read-only inventory is implemented; event endpoint not yet mapped.
-        if self.credentials.is_none() || self.apk_material_path.is_none() {
-            return Err(TransportError::CredentialsRequired);
-        }
-        Ok(Vec::new())
+    fn events(&self, since: Timestamp) -> Result<Vec<Event>> {
+        let client = self.ensure_client()?;
+        let session = self.ensure_session(&client)?;
+        let devices = client.get_device_list(&session)?;
+        let serials: Vec<String> = devices.into_iter().map(|d| d.id.0).collect();
+        client.get_events(&session, &serials, since, 100)
     }
 
     fn live(&self, _device: &DeviceId) -> Result<MediaStreamHandle> {
@@ -122,8 +122,9 @@ impl Transport for CloudTransport {
         };
         r.set(Capability::DeviceList, inv);
         r.set(Capability::DeviceStatus, inv);
-        r.set(Capability::Events, Support::Unsupported);
-        r.set(Capability::Notifications, Support::Unsupported);
+        // Notifications are derived from events by the Transport trait.
+        r.set(Capability::Events, inv);
+        r.set(Capability::Notifications, inv);
         r.set(Capability::LiveVideo, Support::Unsupported);
         r.set(Capability::TwoWayAudio, Support::Unsupported);
         r.set(Capability::Recordings, Support::Unsupported);
@@ -167,6 +168,8 @@ mod tests {
         );
         let r = t.capability_report();
         assert_eq!(r.get(Capability::DeviceList), Support::Supported);
+        assert_eq!(r.get(Capability::Events), Support::Supported);
+        assert_eq!(r.get(Capability::LiveVideo), Support::Unsupported);
     }
 
     #[test]

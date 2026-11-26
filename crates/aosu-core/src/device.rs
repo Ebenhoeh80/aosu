@@ -173,6 +173,11 @@ pub struct Recording {
     pub started_at: Timestamp,
     pub duration_secs: u32,
     pub source: RecordingSource,
+    /// Short-lived signed playback URL. Never persisted or logged.
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub thumbnail_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -185,16 +190,33 @@ pub enum RecordingSource {
 pub enum Command {
     SetLight(bool),
     SetSiren(bool),
+    /// Normalised pan/tilt step in [-1, 1]. `duration_ms` bounds the move.
+    Ptz {
+        pan: i8,
+        tilt: i8,
+        duration_ms: u16,
+    },
+    PtzStop,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MediaStreamHandle {
     pub description: String,
+    /// Short-lived stream URL (HLS/RTSP/WebRTC signalling). RAM only.
+    pub url: Option<String>,
+    /// Transport label, e.g. `hls`, `rtsp`, `webrtc`.
+    pub protocol: Option<String>,
+    pub session_id: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AudioChannelHandle {
     pub description: String,
+    /// Short-lived audio/stream URL. RAM only.
+    pub url: Option<String>,
+    pub protocol: Option<String>,
+    /// Whether the channel supports two-way audio, not just monitoring.
+    pub two_way: bool,
 }
 
 #[cfg(test)]

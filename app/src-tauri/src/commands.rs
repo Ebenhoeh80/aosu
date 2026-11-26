@@ -3,8 +3,9 @@
 //! testable with plain `cargo test`, no Tauri runtime required.
 
 use aosu_core::{
-    build_bundle, scan_ports, Device, DeviceActivity, Event, EventAnalytics, EventQuery,
-    Notification, StoredEvent, Timestamp, TransportConfig, TransportRegistry, DEFAULT_PROBE_PORTS,
+    build_bundle, scan_ports, AudioChannelHandle, Command, Device, DeviceActivity, DeviceId, Event,
+    EventAnalytics, EventQuery, MediaStreamHandle, Notification, Recording, StoredEvent, TimeRange,
+    Timestamp, TransportConfig, TransportRegistry, DEFAULT_PROBE_PORTS,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -211,6 +212,14 @@ pub struct SwitchTransportConfigDto {
     pub email: Option<String>,
     pub password: Option<String>,
     pub apk_path: Option<String>,
+    /// Tuya IoT project credentials. Session-only: never persisted.
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
+    pub region: Option<String>,
+    pub uid: Option<String>,
+    pub go2rtc_base: Option<String>,
+    pub callback_base: Option<String>,
+    pub ptz_enabled: Option<bool>,
 }
 
 impl SwitchTransportConfigDto {
@@ -244,6 +253,39 @@ impl SwitchTransportConfigDto {
                 cfg.options.insert("apkPath".to_string(), v);
             }
         }
+        if let Some(v) = self.client_id {
+            if !v.is_empty() {
+                cfg.options.insert("clientId".to_string(), v);
+            }
+        }
+        if let Some(v) = self.client_secret {
+            if !v.is_empty() {
+                cfg.options.insert("clientSecret".to_string(), v);
+            }
+        }
+        if let Some(v) = self.region {
+            if !v.is_empty() {
+                cfg.options.insert("region".to_string(), v);
+            }
+        }
+        if let Some(v) = self.uid {
+            if !v.is_empty() {
+                cfg.options.insert("uid".to_string(), v);
+            }
+        }
+        if let Some(v) = self.go2rtc_base {
+            if !v.is_empty() {
+                cfg.options.insert("go2rtcBase".to_string(), v);
+            }
+        }
+        if let Some(v) = self.callback_base {
+            if !v.is_empty() {
+                cfg.options.insert("callbackBase".to_string(), v);
+            }
+        }
+        if let Some(v) = self.ptz_enabled {
+            cfg.options.insert("ptzEnabled".to_string(), v.to_string());
+        }
         cfg
     }
 }
@@ -266,6 +308,160 @@ pub fn switch_transport(
         .lock()
         .map_err(|e| e.to_string())? = name;
     Ok(())
+}
+
+// -- Media and device control. These commands never synthesize media data:
+// they call the active transport and surface its real error (including
+// `Unsupported`) straight to the UI.
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaStreamDto {
+    description: String,
+    url: Option<String>,
+    protocol: Option<String>,
+    session_id: Option<String>,
+}
+
+impl From<MediaStreamHandle> for MediaStreamDto {
+    fn from(h: MediaStreamHandle) -> Self {
+        Self {
+            description: h.description,
+            url: h.url,
+            protocol: h.protocol,
+            session_id: h.session_id,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioChannelDto {
+    description: String,
+    url: Option<String>,
+    protocol: Option<String>,
+    two_way: bool,
+}
+
+impl From<AudioChannelHandle> for AudioChannelDto {
+    fn from(h: AudioChannelHandle) -> Self {
+        Self {
+            description: h.description,
+            url: h.url,
+            protocol: h.protocol,
+            two_way: h.two_way,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordingDto {
+    device: String,
+    started_at_epoch_seconds: u64,
+    duration_secs: u32,
+    source: String,
+    url: Option<String>,
+    thumbnail_url: Option<String>,
+}
+
+impl From<Recording> for RecordingDto {
+    fn from(r: Recording) -> Self {
+        Self {
+            device: r.device.0,
+            started_at_epoch_seconds: r.started_at.0,
+            duration_secs: r.duration_secs,
+            source: format!("{:?}", r.source),
+            url: r.url,
+            thumbnail_url: r.thumbnail_url,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum DeviceCommandDto {
+    SetLight { on: bool },
+    SetSiren { on: bool },
+    Ptz { pan: i8, tilt: i8, duration_ms: u16 },
+    PtzStop,
+}
+
+impl From<DeviceCommandDto> for Command {
+    fn from(c: DeviceCommandDto) -> Self {
+        match c {
+            DeviceCommandDto::SetLight { on } => Command::SetLight(on),
+            DeviceCommandDto::SetSiren { on } => Command::SetSiren(on),
+            DeviceCommandDto::Ptz {
+                pan,
+                tilt,
+                duration_ms,
+            } => Command::Ptz {
+                pan,
+                tilt,
+                duration_ms,
+            },
+            DeviceCommandDto::PtzStop => Command::PtzStop,
+        }
+    }
+}
+
+#[tauri::command]
+pub fn live_stream(state: State<AppState>, device: String) -> Result<MediaStreamDto, String> {
+    state
+        .transport
+        .lock()
+        .map_err(|e| e.to_string())?
+        .live(&DeviceId(device))
+        .map(MediaStreamDto::from)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn open_talk(state: State<AppState>, device: String) -> Result<AudioChannelDto, String> {
+    state
+        .transport
+        .lock()
+        .map_err(|e| e.to_string())?
+        .talk(&DeviceId(device))
+        .map(AudioChannelDto::from)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_recordings(
+    state: State<AppState>,
+    device: String,
+    from_epoch_seconds: u64,
+    to_epoch_seconds: u64,
+) -> Result<Vec<RecordingDto>, String> {
+    state
+        .transport
+        .lock()
+        .map_err(|e| e.to_string())?
+        .recordings(
+            &DeviceId(device),
+            TimeRange {
+                from: Timestamp(from_epoch_seconds),
+                to: Timestamp(to_epoch_seconds),
+            },
+        )
+        .map(|rows| rows.into_iter().map(RecordingDto::from).collect())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn send_device_command(
+    state: State<AppState>,
+    device: String,
+    command: DeviceCommandDto,
+) -> Result<(), String> {
+    state
+        .transport
+        .lock()
+        .map_err(|e| e.to_string())?
+        .command(&DeviceId(device), command.into())
+        .map_err(|e| e.to_string())
 }
 
 /// Export everything the Diagnostics Center shows, as one JSON document

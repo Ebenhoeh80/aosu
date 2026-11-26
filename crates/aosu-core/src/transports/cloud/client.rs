@@ -4,12 +4,13 @@
 //! inventory. Secrets are not persisted. APK/SO material is read at runtime
 //! from a user-provided path and kept only in memory.
 
-use crate::device::{Device, DeviceId, HealthStatus};
+use crate::device::{Device, DeviceId, Event, EventKind, HealthStatus, Timestamp};
 use crate::transport::{Result, TransportError};
 use aes::Aes128;
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
 use cbc::cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyIvInit};
+use chrono::NaiveDateTime;
 use md5::{Digest, Md5};
 use serde::Deserialize;
 use std::io::Read;
@@ -21,6 +22,7 @@ const DEFAULT_API_BASE: &str = "https://api-eu.aosulife.com";
 const LOGIN_PATH: &str = "/v1/user/login";
 const DEVICE_LIST_PATH: &str = "/v1/dev/getList";
 const OTA_INFO_PATH: &str = "/v1/ota/getNewByApp";
+const EVENT_IMAGE_LIST_PATH: &str = "/v1/event/getImageList";
 const KEY_OFFSET: usize = 0x18BC4;
 const KEY_LEN: usize = 16;
 const SO_PATH_IN_SPLIT: &str = "lib/arm64-v8a/libglazero-security.so";
@@ -220,6 +222,61 @@ impl AosuCloudClient {
         Ok(devices)
     }
 
+    /// Read-only recent-event feed (`/v1/event/getImageList`). Only the
+    /// documented device serials, a bounded count and normalized event types
+    /// are returned. Event IDs, image URLs and opaque AI payloads are
+    /// deliberately discarded so probes/exports never leak them.
+    pub fn get_events(
+        &self,
+        session: &CloudSession,
+        serials: &[String],
+        since: Timestamp,
+        limit: usize,
+    ) -> Result<Vec<Event>> {
+        if serials.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ms = now_ms().to_string();
+        let rid = Uuid::new_v4().to_string();
+        let sign = self.sign(&rid, &ms);
+        let url = format!("{}{}", self.config.api_base, EVENT_IMAGE_LIST_PATH);
+        let count = limit.clamp(1, 100).to_string();
+        let mut params: Vec<(&str, &str)> = vec![("count", count.as_str())];
+        params.extend(
+            serials
+                .iter()
+                .take(10)
+                .filter(|sn| !sn.is_empty() && sn.len() <= 256)
+                .map(|sn| ("sn[]", sn.as_str())),
+        );
+        let resp = self
+            .http
+            .post(&url)
+            .query(&[("uuid", rid.as_str()), ("t", ms.as_str())])
+            .headers(self.base_headers(Some(&session.sid), Some(&session.uid), &sign)?)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .form(&params)
+            .send()
+            .map_err(|e| TransportError::Other(format!("event request: {e}")))?;
+        let text = resp.text().unwrap_or_default();
+        let value: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| TransportError::Other(format!("event json: {e}")))?;
+        let errno = value.get("errno").and_then(|v| v.as_i64()).unwrap_or(-1) as i32;
+        if errno != 0 {
+            return Err(TransportError::Other(format!("getImageList errno={errno}")));
+        }
+        let data = value.get("data");
+        let empty = Vec::new();
+        let rows = data
+            .and_then(|d| d.get("list"))
+            .and_then(|v| v.as_array())
+            .or_else(|| data.and_then(|v| v.as_array()))
+            .or_else(|| value.get("list").and_then(|v| v.as_array()))
+            .unwrap_or(&empty);
+
+        Ok(map_event_rows(rows, serials, since, limit))
+    }
+
     fn enrich_firmware_versions(&self, session: &CloudSession, devices: &mut [Device]) {
         for device in devices.iter_mut() {
             if device
@@ -261,6 +318,42 @@ impl AosuCloudClient {
         Ok(body
             .data
             .and_then(|d| clean_opt(d.current_version).or_else(|| clean_opt(d.version))))
+    }
+
+    /// Send one read-only POST to an observed AOSU endpoint and return only
+    /// the numeric errno plus the *field names* of the response. Values are
+    /// deliberately discarded so probes never capture tokens, keys or media.
+    pub fn probe(
+        &self,
+        session: &CloudSession,
+        path: &str,
+        params: &[(&str, &str)],
+    ) -> Result<CloudProbe> {
+        let ms = now_ms().to_string();
+        let rid = Uuid::new_v4().to_string();
+        let sign = self.sign(&rid, &ms);
+        let url = format!("{}{}", self.config.api_base, path);
+        let resp = self
+            .http
+            .post(&url)
+            .query(&[("uuid", rid.as_str()), ("t", ms.as_str())])
+            .headers(self.base_headers(Some(&session.sid), Some(&session.uid), &sign)?)
+            .form(params)
+            .send()
+            .map_err(|e| TransportError::Other(format!("probe request: {e}")))?;
+        let text = resp.text().unwrap_or_default();
+        let value: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| TransportError::Other(format!("probe json: {e}")))?;
+        let errno = value.get("errno").and_then(|v| v.as_i64()).unwrap_or(-1) as i32;
+        let mut fields = Vec::new();
+        collect_field_names(&value, &mut fields, 0);
+        let mut paths = Vec::new();
+        collect_field_paths(&value, "", &mut paths, 0);
+        Ok(CloudProbe {
+            errno,
+            fields,
+            paths,
+        })
     }
 
     fn sign(&self, request_id: &str, milliseconds: &str) -> String {
@@ -330,6 +423,191 @@ fn now_ms() -> u128 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis()
+}
+
+/// Result of a read-only endpoint probe: errno and response field names only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloudProbe {
+    pub errno: i32,
+    pub fields: Vec<String>,
+    /// Dotted paths of response fields (no values), useful for mapping.
+    pub paths: Vec<String>,
+}
+
+/// Recursively collect JSON field names; never touch or return values.
+fn collect_field_names(value: &serde_json::Value, out: &mut Vec<String>, depth: usize) {
+    if depth > 8 {
+        return;
+    }
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, child) in map {
+                if !out.iter().any(|seen| seen == key) {
+                    out.push(key.clone());
+                }
+                collect_field_names(child, out, depth + 1);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for child in items {
+                collect_field_names(child, out, depth + 1);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Convert raw AOSU event rows into normalized events. Only whitelisted
+/// categories and bounded timestamps are kept; opaque identifiers, signed
+/// image URLs and AI payloads are dropped.
+fn map_event_rows(
+    rows: &[serde_json::Value],
+    serials: &[String],
+    since: Timestamp,
+    limit: usize,
+) -> Vec<Event> {
+    let fallback_sn = serials.first().map(String::as_str).unwrap_or("");
+    let mut out = Vec::new();
+    for row in rows.iter().take(limit.min(100)) {
+        let time = row.get("eventTime").or_else(|| {
+            row.get("timeInfo")
+                .and_then(|info| info.get("begin").or_else(|| info.get("end")))
+        });
+        let Some(at) = parse_event_time(time) else {
+            continue;
+        };
+        if at.0 < since.0 {
+            continue;
+        }
+        let sn = row
+            .get("sn")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty() && s.len() <= 256)
+            .unwrap_or(fallback_sn);
+        let kind = map_event_kind(row);
+        let severity = kind.default_severity();
+        out.push(Event {
+            device: DeviceId(sn.to_string()),
+            kind,
+            severity,
+            at,
+            // Signed image URLs are short-lived identifiers: never keep
+            // or export them. See docs/event-pipeline.md.
+            thumbnail_url: None,
+            metadata: std::collections::BTreeMap::new(),
+        });
+    }
+    out
+}
+
+/// Field paths only -- useful when mapping an undocumented response, still
+/// without capturing any values.
+fn collect_field_paths(
+    value: &serde_json::Value,
+    prefix: &str,
+    out: &mut Vec<String>,
+    depth: usize,
+) {
+    if depth > 8 {
+        return;
+    }
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, child) in map {
+                let path = if prefix.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{prefix}.{key}")
+                };
+                if !out.iter().any(|seen| seen == &path) {
+                    out.push(path.clone());
+                }
+                collect_field_paths(child, &path, out, depth + 1);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for child in items {
+                collect_field_paths(child, prefix, out, depth + 1);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Parse the observed `eventTime` forms without inventing a value. Unknown
+/// formats are skipped rather than mapped to "now".
+fn parse_event_time(value: Option<&serde_json::Value>) -> Option<Timestamp> {
+    let value = value?;
+    let numeric = match value {
+        serde_json::Value::Number(n) => n.as_u64().or_else(|| {
+            n.as_f64()
+                .filter(|f| f.is_finite() && *f >= 0.0)
+                .map(|f| f as u64)
+        }),
+        serde_json::Value::String(s) => s.trim().parse::<u64>().ok(),
+        _ => None,
+    };
+    if let Some(n) = numeric {
+        let seconds = if n > 10_000_000_000 { n / 1000 } else { n };
+        return Some(Timestamp(seconds));
+    }
+    let text = value.as_str()?.trim();
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(text) {
+        return u64::try_from(dt.timestamp()).ok().map(Timestamp);
+    }
+    for format in [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S%.f",
+        "%Y-%m-%dT%H:%M:%S%.f",
+    ] {
+        if let Ok(dt) = NaiveDateTime::parse_from_str(text, format) {
+            return u64::try_from(dt.and_utc().timestamp()).ok().map(Timestamp);
+        }
+    }
+    None
+}
+
+/// Map only whitelisted Aosu categories. Opaque codes and free-form AI
+/// metadata are never echoed back; they become `UnknownVendorEvent`.
+fn map_event_kind(row: &serde_json::Value) -> EventKind {
+    let mut tokens: Vec<&str> = Vec::new();
+    for key in ["eventType", "event", "title"] {
+        if let Some(s) = row.get(key).and_then(|v| v.as_str()) {
+            tokens.push(s);
+        }
+    }
+    if let Some(s) = row.get("aiVision").and_then(|v| v.as_str()) {
+        tokens.push(s);
+    }
+    match row.get("uniformType") {
+        Some(serde_json::Value::Array(items)) => {
+            for item in items.iter().take(8) {
+                if let Some(s) = item.as_str() {
+                    tokens.push(s);
+                }
+            }
+        }
+        Some(serde_json::Value::String(s)) => tokens.push(s),
+        _ => {}
+    }
+    for token in tokens {
+        match token.trim().to_ascii_lowercase().as_str() {
+            "motion" | "movement" | "motion_detection" => return EventKind::Motion,
+            "person" | "human" | "human_detection" | "person_detection" => {
+                return EventKind::Person
+            }
+            "vehicle" | "car" => return EventKind::Vehicle,
+            "doorbell" | "call" => return EventKind::Doorbell,
+            "animal" | "pet" => return EventKind::Other("AnimalDetected".into()),
+            // Observed AOSU-specific labels. Keep them distinct from the
+            // confirmed generic categories instead of guessing a synonym.
+            "pass" => return EventKind::Other("AosuPass".into()),
+            "stay" => return EventKind::Other("AosuStay".into()),
+            _ => {}
+        }
+    }
+    EventKind::Other("UnknownVendorEvent".into())
 }
 
 fn load_materials(path: &Path) -> Result<([u8; KEY_LEN], Vec<u8>)> {
@@ -770,6 +1048,36 @@ mod tests {
     /// fields? Logs field names only -- never passwords, tokens or identifiers.
     #[test]
     #[ignore = "requires AOSU_TEST_EMAIL/AOSU_TEST_PASSWORD/AOSU_TEST_APK"]
+    fn cloud_live_events() {
+        let email = std::env::var("AOSU_TEST_EMAIL").expect("AOSU_TEST_EMAIL");
+        let password = std::env::var("AOSU_TEST_PASSWORD").expect("AOSU_TEST_PASSWORD");
+        let apk = std::env::var("AOSU_TEST_APK").expect("AOSU_TEST_APK");
+        let client = AosuCloudClient::from_apk(CloudClientConfig::new(apk)).expect("client");
+        let session = client
+            .login(&CloudCredentials { email, password })
+            .expect("login");
+        let devices = client.get_device_list(&session).expect("devices");
+        let serials: Vec<String> = devices.iter().map(|d| d.id.0.clone()).collect();
+        let events = client
+            .get_events(&session, &serials, Timestamp(0), 10)
+            .expect("events");
+        // Log only normalized kind names and count; never IDs, SNs or URLs.
+        let mut kinds: Vec<String> = events
+            .iter()
+            .map(|e| e.kind.wire_name())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        kinds.sort();
+        eprintln!(
+            "cloud_live_events count={} kinds={}",
+            events.len(),
+            kinds.join(",")
+        );
+    }
+
+    #[test]
+    #[ignore = "requires AOSU_TEST_EMAIL/AOSU_TEST_PASSWORD/AOSU_TEST_APK"]
     fn cloud_live_probe_login_field_names() {
         let email = std::env::var("AOSU_TEST_EMAIL").expect("AOSU_TEST_EMAIL");
         let password = std::env::var("AOSU_TEST_PASSWORD").expect("AOSU_TEST_PASSWORD");
@@ -894,5 +1202,134 @@ mod tests {
         assert_eq!(dev.wifi_signal_percent, Some(70));
         assert_eq!(dev.firmware_version.as_deref(), Some("1.2.3"));
         assert!(dev.online);
+    }
+
+    #[test]
+    fn parses_observed_event_time_formats() {
+        assert_eq!(
+            parse_event_time(Some(&serde_json::json!(1_700_000_000))),
+            Some(Timestamp(1_700_000_000))
+        );
+        assert_eq!(
+            parse_event_time(Some(&serde_json::json!("1700000000000"))),
+            Some(Timestamp(1_700_000_000))
+        );
+        assert!(parse_event_time(Some(&serde_json::json!("2026-11-26 10:00:00"))).is_some());
+        assert!(parse_event_time(Some(&serde_json::json!("not-a-date"))).is_none());
+    }
+
+    #[test]
+    fn maps_observed_event_rows_without_leaking_payload() {
+        let rows = vec![serde_json::json!({
+            "sn": "SN1",
+            "eventType": "42",
+            "uniformType": ["person"],
+            "imageUrl": "https://signed.example/secret",
+            "aiVision": "person",
+            "timeInfo": {"begin": 1_700_000_000, "end": 1_700_000_005}
+        })];
+        let events = map_event_rows(&rows, &["SN1".into()], Timestamp(0), 10);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].device.0, "SN1");
+        assert_eq!(events[0].kind, EventKind::Person);
+        assert_eq!(events[0].at, Timestamp(1_700_000_000));
+        assert_eq!(events[0].thumbnail_url, None);
+        assert!(events[0].metadata.is_empty());
+    }
+
+    #[test]
+    fn maps_only_whitelisted_event_categories() {
+        let person = serde_json::json!({"eventType": "42", "uniformType": ["person"]});
+        assert_eq!(map_event_kind(&person), EventKind::Person);
+        let nested = serde_json::json!({
+            "timeInfo": {"begin": 1_700_000_000},
+            "aiVision": "person",
+            "sn": "SN1"
+        });
+        assert_eq!(map_event_kind(&nested), EventKind::Person);
+        assert_eq!(
+            parse_event_time(nested.get("timeInfo").and_then(|v| v.get("begin"))),
+            Some(Timestamp(1_700_000_000))
+        );
+        let unknown = serde_json::json!({"eventType": "opaque-id", "uniformType": ["surprise"]});
+        assert_eq!(
+            map_event_kind(&unknown),
+            EventKind::Other("UnknownVendorEvent".into())
+        );
+        let stay = serde_json::json!({"uniformType": ["stay"]});
+        assert_eq!(map_event_kind(&stay), EventKind::Other("AosuStay".into()));
+    }
+
+    /// Read-only endpoint discovery: try a list of plausible GET-style
+    /// paths with a serial number and print errno plus response field names
+    /// only. Never logs values, tokens, keys or media URLs.
+    #[test]
+    #[ignore = "requires AOSU_TEST_EMAIL/AOSU_TEST_PASSWORD/AOSU_TEST_APK"]
+    fn cloud_live_probe_media_endpoints() {
+        let email = std::env::var("AOSU_TEST_EMAIL").expect("AOSU_TEST_EMAIL");
+        let password = std::env::var("AOSU_TEST_PASSWORD").expect("AOSU_TEST_PASSWORD");
+        let apk = std::env::var("AOSU_TEST_APK").expect("AOSU_TEST_APK");
+        let client = AosuCloudClient::from_apk(CloudClientConfig::new(apk)).expect("client");
+        let session = client
+            .login(&CloudCredentials { email, password })
+            .expect("login");
+        let devices = client.get_device_list(&session).expect("devices");
+        let serials: Vec<String> = devices.iter().take(5).map(|d| d.id.0.clone()).collect();
+        assert!(!serials.is_empty(), "at least one device");
+        let paths = [
+            "/v1/dev/getInfoBySn",
+            "/v1/dev/getInfo",
+            "/v1/dev/getDetail",
+            "/v1/dev/getDeviceInfo",
+            "/v1/dev/list",
+            "/v1/dev/getShareList",
+            "/v1/user/getInfo",
+            "/v1/msg/getList",
+            "/v1/msg/getPushLog",
+            "/v1/event/getImageList",
+            "/v1/event/getList",
+            "/v1/event/getInfoByEventTime",
+            "/v1/video/getList",
+            "/v1/video/getPlaybackUrl",
+            "/v1/playback/getList",
+            "/v1/dev/getStreamUrl",
+            "/v1/dev/getLiveUrl",
+            "/v1/dev/getRtspUrl",
+            "/v1/camera/getList",
+            "/v1/dev/getStatus",
+        ];
+        for path in paths {
+            let candidates: Vec<&str> = if path.starts_with("/v1/event/") {
+                serials.iter().map(String::as_str).collect()
+            } else {
+                vec![serials[0].as_str()]
+            };
+            for candidate in candidates {
+                let params: Vec<(&str, &str)> = if path.starts_with("/v1/event/") {
+                    vec![("sn[]", candidate), ("count", "10")]
+                } else {
+                    vec![("sn", candidate)]
+                };
+                match client.probe(&session, path, &params) {
+                    Ok(probe) => {
+                        let mut names = probe.fields;
+                        names.sort();
+                        names.dedup();
+                        let mut paths = probe.paths;
+                        paths.sort();
+                        paths.dedup();
+                        eprintln!(
+                            "cloud_media_probe path={path} errno={} fields={} names={} paths={}",
+                            probe.errno,
+                            names.len(),
+                            names.join(","),
+                            paths.join(",")
+                        );
+                    }
+                    Err(e) => eprintln!("cloud_media_probe path={path} error={e}"),
+                }
+                std::thread::sleep(std::time::Duration::from_millis(120));
+            }
+        }
     }
 }

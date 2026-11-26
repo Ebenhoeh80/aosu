@@ -163,7 +163,7 @@ export function mockCapabilityReport(): CapabilityReport {
 export function mockAvailableTransports(): string[] {
   // Keep in sync with TransportRegistry::with_builtins() in
   // crates/aosu-core/src/registry.rs (mockData.test.ts guards this).
-  return ["cloud", "kestrel-mock", "local", "mock", "push-log"];
+  return ["cloud", "kestrel-mock", "local", "mock", "push-log", "tuya-cloud"];
 }
 
 export function mockDiagnosticsBundle(): DiagnosticsBundle {

@@ -14,6 +14,13 @@ export function Settings({ onTransportChanged }: { onTransportChanged?: () => vo
   const [cloudEmail, setCloudEmail] = useState("");
   const [cloudPassword, setCloudPassword] = useState("");
   const [cloudApkPath, setCloudApkPath] = useState("");
+  const [tuyaClientId, setTuyaClientId] = useState("");
+  const [tuyaClientSecret, setTuyaClientSecret] = useState("");
+  const [tuyaRegion, setTuyaRegion] = useState("eu");
+  const [tuyaUid, setTuyaUid] = useState("");
+  const [tuyaGo2rtcBase, setTuyaGo2rtcBase] = useState("");
+  const [tuyaCallbackBase, setTuyaCallbackBase] = useState("");
+  const [tuyaPtzEnabled, setTuyaPtzEnabled] = useState(false);
   const [verboseLogging, setVerboseLogging] = useState(
     () => localStorage.getItem("aosu.verboseLogging") === "true",
   );
@@ -61,7 +68,17 @@ export function Settings({ onTransportChanged }: { onTransportChanged?: () => vo
           ? { path: pushLogPath }
           : name === "cloud"
             ? { email: cloudEmail, password: cloudPassword, apkPath: cloudApkPath }
-            : undefined;
+            : name === "tuya-cloud"
+              ? {
+                  clientId: tuyaClientId,
+                  clientSecret: tuyaClientSecret,
+                  region: tuyaRegion,
+                  uid: tuyaUid,
+                  go2rtcBase: tuyaGo2rtcBase,
+                  callbackBase: tuyaCallbackBase,
+                  ptzEnabled: tuyaPtzEnabled,
+                }
+              : undefined;
       await api.switchTransport(name, config);
       setActive(name);
       await onTransportChanged?.();
@@ -144,6 +161,37 @@ export function Settings({ onTransportChanged }: { onTransportChanged?: () => vo
               </button>
               <span className="text-xs text-gray-500">E-Mail/APK-Pfad werden gespeichert; Passwort bei Neustart neu eingeben.</span>
             </div>
+          </div>
+        )}
+        {transports.includes("tuya-cloud") && (
+          <div className="mt-3 space-y-2 border rounded p-2">
+            <p className="text-xs text-gray-600">
+              Offizieller Tuya-Cloud-Adapter: eigenes IoT-Projekt, „Link App Account“ und
+              dokumentierte OpenAPI-Endpunkte. Keine Secrets aus der AOSU-APK. Alle Felder
+              bleiben nur für diese Sitzung im Speicher und werden nicht gespeichert.
+            </p>
+            <label className="block text-xs text-gray-500" htmlFor="tuya-client-id">Client ID</label>
+            <input id="tuya-client-id" className="border rounded px-2 py-1 w-full" value={tuyaClientId} onChange={(e) => setTuyaClientId(e.target.value)} autoComplete="off" />
+            <label className="block text-xs text-gray-500" htmlFor="tuya-client-secret">Client Secret (nur Sitzung)</label>
+            <input id="tuya-client-secret" type="password" className="border rounded px-2 py-1 w-full" value={tuyaClientSecret} onChange={(e) => setTuyaClientSecret(e.target.value)} autoComplete="off" />
+            <label className="block text-xs text-gray-500" htmlFor="tuya-region">Region (eu/us/cn/in/sg)</label>
+            <select id="tuya-region" className="border rounded px-2 py-1 w-full" value={tuyaRegion} onChange={(e) => setTuyaRegion(e.target.value)}>
+              {["eu", "us", "cn", "in", "sg"].map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <label className="block text-xs text-gray-500" htmlFor="tuya-uid">UID (optional, sonst aus dem Token)</label>
+            <input id="tuya-uid" className="border rounded px-2 py-1 w-full" value={tuyaUid} onChange={(e) => setTuyaUid(e.target.value)} autoComplete="off" />
+            <label className="block text-xs text-gray-500" htmlFor="tuya-go2rtc">go2rtc-Basis-URL (optional, für Gegensprechen)</label>
+            <input id="tuya-go2rtc" className="border rounded px-2 py-1 w-full" value={tuyaGo2rtcBase} onChange={(e) => setTuyaGo2rtcBase(e.target.value)} placeholder="http://127.0.0.1:1984" />
+            <label className="block text-xs text-gray-500" htmlFor="tuya-callback">Öffentliche Callback-Basis-URL für Cloud-Aufnahmen (optional)</label>
+            <input id="tuya-callback" className="border rounded px-2 py-1 w-full" value={tuyaCallbackBase} onChange={(e) => setTuyaCallbackBase(e.target.value)} placeholder="https://example.org/aosu-key" />
+            <label className="flex items-center gap-2 text-xs text-gray-600">
+              <input type="checkbox" checked={tuyaPtzEnabled} onChange={(e) => setTuyaPtzEnabled(e.target.checked)} />
+              PTZ freischalten (erst nach erfolgreichem STOP-Test)
+            </label>
+            <p className="text-xs text-gray-500">
+              Ohne Callback-URL bleiben Aufnahmen blockiert. Ohne go2rtc bleibt Gegensprechen
+              nicht unterstützt. PTZ ist standardmäßig aus.
+            </p>
           </div>
         )}
       </section>

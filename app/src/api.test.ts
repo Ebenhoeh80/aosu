@@ -47,6 +47,33 @@ describe("api (offline-first wrapper)", () => {
   });
 });
 
+describe("api media and device commands (no mock fallback)", () => {
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset();
+  });
+
+  it("returns a real live stream and passes the device id", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({
+      description: "Tuya Cloud HLS stream",
+      url: "https://stream.example/live.m3u8",
+      protocol: "hls",
+      sessionId: null,
+    });
+    const stream = await api.liveStream("cam-1");
+    expect(stream.protocol).toBe("hls");
+    expect(invoke).toHaveBeenCalledWith("live_stream", { device: "cam-1" });
+  });
+
+  it("propagates errors instead of inventing media or motor movement", async () => {
+    vi.mocked(invoke).mockRejectedValue(new Error("not supported by this transport"));
+    await expect(api.openTalk("cam-1")).rejects.toThrow("not supported");
+    await expect(api.listRecordings("cam-1", 1, 2)).rejects.toThrow("not supported");
+    await expect(api.sendDeviceCommand("cam-1", { type: "ptzStop" })).rejects.toThrow(
+      "not supported",
+    );
+  });
+});
+
 describe("api Event Platform commands (no mock fallback)", () => {
   beforeEach(() => {
     vi.mocked(invoke).mockReset();
