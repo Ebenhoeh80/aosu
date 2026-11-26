@@ -43,6 +43,8 @@ pub enum BlockedReason {
     /// Cloud-storage playback needs a callback URL Tuya can reach to fetch
     /// the short-lived decryption key (documented HLS API).
     CallbackUrlRequired,
+    /// Implementation exists, but no successful call has proved it yet.
+    LiveVerificationRequired,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

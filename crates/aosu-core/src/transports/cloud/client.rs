@@ -27,13 +27,15 @@ const KEY_OFFSET: usize = 0x18BC4;
 const KEY_LEN: usize = 16;
 const SO_PATH_IN_SPLIT: &str = "lib/arm64-v8a/libglazero-security.so";
 
-#[derive(Debug, Clone)]
+/// Deliberately no `Debug`: passwords must never leak into logs.
+#[derive(Clone)]
 pub struct CloudCredentials {
     pub email: String,
     pub password: String,
 }
 
-#[derive(Debug, Clone)]
+/// Deliberately no `Debug`: session identifiers are credentials.
+#[derive(Clone)]
 pub struct CloudSession {
     pub sid: String,
     pub uid: String,
@@ -466,7 +468,6 @@ fn map_event_rows(
     since: Timestamp,
     limit: usize,
 ) -> Vec<Event> {
-    let fallback_sn = serials.first().map(String::as_str).unwrap_or("");
     let mut out = Vec::new();
     for row in rows.iter().take(limit.min(100)) {
         let time = row.get("eventTime").or_else(|| {
@@ -479,12 +480,21 @@ fn map_event_rows(
         if at.0 < since.0 {
             continue;
         }
-        let sn = row
+        // Never guess a device: a missing or unknown serial number is
+        // dropped instead of attributing the event to the first device.
+        let Some(sn) = row
             .get("sn")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty() && s.len() <= 256)
-            .unwrap_or(fallback_sn);
-        let kind = map_event_kind(row);
+        else {
+            continue;
+        };
+        if !serials.is_empty() && !serials.iter().any(|s| s == sn) {
+            continue;
+        }
+        let Some(kind) = map_event_kind(row) else {
+            continue;
+        };
         let severity = kind.default_severity();
         out.push(Event {
             device: DeviceId(sn.to_string()),
@@ -569,8 +579,8 @@ fn parse_event_time(value: Option<&serde_json::Value>) -> Option<Timestamp> {
 }
 
 /// Map only whitelisted Aosu categories. Opaque codes and free-form AI
-/// metadata are never echoed back; they become `UnknownVendorEvent`.
-fn map_event_kind(row: &serde_json::Value) -> EventKind {
+/// metadata are never echoed back: unknown categories are dropped entirely.
+fn map_event_kind(row: &serde_json::Value) -> Option<EventKind> {
     let mut tokens: Vec<&str> = Vec::new();
     for key in ["eventType", "event", "title"] {
         if let Some(s) = row.get(key).and_then(|v| v.as_str()) {
@@ -593,21 +603,21 @@ fn map_event_kind(row: &serde_json::Value) -> EventKind {
     }
     for token in tokens {
         match token.trim().to_ascii_lowercase().as_str() {
-            "motion" | "movement" | "motion_detection" => return EventKind::Motion,
+            "motion" | "movement" | "motion_detection" => return Some(EventKind::Motion),
             "person" | "human" | "human_detection" | "person_detection" => {
-                return EventKind::Person
+                return Some(EventKind::Person)
             }
-            "vehicle" | "car" => return EventKind::Vehicle,
-            "doorbell" | "call" => return EventKind::Doorbell,
-            "animal" | "pet" => return EventKind::Other("AnimalDetected".into()),
+            "vehicle" | "car" => return Some(EventKind::Vehicle),
+            "doorbell" | "call" => return Some(EventKind::Doorbell),
+            "animal" | "pet" => return Some(EventKind::Other("AnimalDetected".into())),
             // Observed AOSU-specific labels. Keep them distinct from the
             // confirmed generic categories instead of guessing a synonym.
-            "pass" => return EventKind::Other("AosuPass".into()),
-            "stay" => return EventKind::Other("AosuStay".into()),
+            "pass" => return Some(EventKind::Other("AosuPass".into())),
+            "stay" => return Some(EventKind::Other("AosuStay".into())),
             _ => {}
         }
     }
-    EventKind::Other("UnknownVendorEvent".into())
+    None
 }
 
 fn load_materials(path: &Path) -> Result<([u8; KEY_LEN], Vec<u8>)> {
@@ -1240,24 +1250,53 @@ mod tests {
     #[test]
     fn maps_only_whitelisted_event_categories() {
         let person = serde_json::json!({"eventType": "42", "uniformType": ["person"]});
-        assert_eq!(map_event_kind(&person), EventKind::Person);
+        assert_eq!(map_event_kind(&person), Some(EventKind::Person));
         let nested = serde_json::json!({
             "timeInfo": {"begin": 1_700_000_000},
             "aiVision": "person",
             "sn": "SN1"
         });
-        assert_eq!(map_event_kind(&nested), EventKind::Person);
+        assert_eq!(map_event_kind(&nested), Some(EventKind::Person));
         assert_eq!(
             parse_event_time(nested.get("timeInfo").and_then(|v| v.get("begin"))),
             Some(Timestamp(1_700_000_000))
         );
         let unknown = serde_json::json!({"eventType": "opaque-id", "uniformType": ["surprise"]});
-        assert_eq!(
-            map_event_kind(&unknown),
-            EventKind::Other("UnknownVendorEvent".into())
-        );
+        assert_eq!(map_event_kind(&unknown), None);
         let stay = serde_json::json!({"uniformType": ["stay"]});
-        assert_eq!(map_event_kind(&stay), EventKind::Other("AosuStay".into()));
+        assert_eq!(
+            map_event_kind(&stay),
+            Some(EventKind::Other("AosuStay".into()))
+        );
+    }
+
+    #[test]
+    fn drops_events_with_missing_or_unknown_serial_and_unknown_kind() {
+        let rows = vec![
+            serde_json::json!({
+                "uniformType": ["person"],
+                "timeInfo": {"begin": 1_700_000_000}
+            }),
+            serde_json::json!({
+                "sn": "SN-OTHER",
+                "uniformType": ["person"],
+                "timeInfo": {"begin": 1_700_000_000}
+            }),
+            serde_json::json!({
+                "sn": "SN1",
+                "uniformType": ["surprise"],
+                "timeInfo": {"begin": 1_700_000_000}
+            }),
+            serde_json::json!({
+                "sn": "SN1",
+                "uniformType": ["person"],
+                "timeInfo": {"begin": 1_700_000_000}
+            }),
+        ];
+        let events = map_event_rows(&rows, &["SN1".into()], Timestamp(0), 10);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].device.0, "SN1");
+        assert_eq!(events[0].kind, EventKind::Person);
     }
 
     /// Read-only endpoint discovery: try a list of plausible GET-style

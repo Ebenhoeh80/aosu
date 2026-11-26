@@ -204,7 +204,8 @@ pub fn active_transport(state: State<AppState>) -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+/// No `Debug`: this DTO carries plaintext passwords and client secrets.
+#[derive(Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SwitchTransportConfigDto {
     pub host: Option<String>,
@@ -218,6 +219,7 @@ pub struct SwitchTransportConfigDto {
     pub region: Option<String>,
     pub uid: Option<String>,
     pub go2rtc_base: Option<String>,
+    pub go2rtc_stream: Option<String>,
     pub callback_base: Option<String>,
     pub ptz_enabled: Option<bool>,
 }
@@ -276,6 +278,11 @@ impl SwitchTransportConfigDto {
         if let Some(v) = self.go2rtc_base {
             if !v.is_empty() {
                 cfg.options.insert("go2rtcBase".to_string(), v);
+            }
+        }
+        if let Some(v) = self.go2rtc_stream {
+            if !v.is_empty() {
+                cfg.options.insert("go2rtcStream".to_string(), v);
             }
         }
         if let Some(v) = self.callback_base {

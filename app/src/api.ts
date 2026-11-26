@@ -101,6 +101,7 @@ export const api = {
       region?: string;
       uid?: string;
       go2rtcBase?: string;
+      go2rtcStream?: string;
       callbackBase?: string;
       ptzEnabled?: boolean;
     },
