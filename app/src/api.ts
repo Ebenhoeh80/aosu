@@ -18,9 +18,14 @@ import type {
 /// this to tell a user "you're seeing demo data" honestly instead of
 /// silently pretending it's live.
 let lastCallWasMock = false;
+let mockActiveTransport = "mock";
 
 export function wasLastCallMocked(): boolean {
   return lastCallWasMock;
+}
+
+function hasTauriRuntime(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
 async function callOrMock<T>(
@@ -28,6 +33,11 @@ async function callOrMock<T>(
   args: Record<string, unknown> | undefined,
   mockFallback: () => T,
 ): Promise<T> {
+  if (hasTauriRuntime()) {
+    const result = await invoke<T>(command, args);
+    lastCallWasMock = false;
+    return result;
+  }
   try {
     const result = await invoke<T>(command, args);
     lastCallWasMock = false;
@@ -72,10 +82,15 @@ export const api = {
     callOrMock("list_available_transports", undefined, mock.mockAvailableTransports),
 
   activeTransport: (): Promise<string> =>
-    callOrMock("active_transport", undefined, () => "mock"),
+    callOrMock("active_transport", undefined, () => mockActiveTransport),
 
-  switchTransport: (name: string, host?: string, path?: string): Promise<void> =>
-    callOrMock("switch_transport", { name, host, path }, () => {}),
+  switchTransport: (
+    name: string,
+    config?: { host?: string; path?: string; email?: string; password?: string; apkPath?: string },
+  ): Promise<void> =>
+    callOrMock("switch_transport", { name, config }, () => {
+      mockActiveTransport = name;
+    }),
 
   exportDiagnostics: (networkHost?: string): Promise<string> =>
     callOrMock("export_diagnostics", { networkHost }, () =>

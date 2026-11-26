@@ -203,21 +203,53 @@ pub fn active_transport(state: State<AppState>) -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SwitchTransportConfigDto {
+    pub host: Option<String>,
+    pub path: Option<String>,
+    pub email: Option<String>,
+    pub password: Option<String>,
+    pub apk_path: Option<String>,
+}
+
 #[tauri::command]
 pub fn switch_transport(
     state: State<AppState>,
     name: String,
-    host: Option<String>,
-    path: Option<String>,
+    config: Option<SwitchTransportConfigDto>,
 ) -> Result<(), String> {
-    let config = match (host, path) {
-        (Some(h), _) => TransportConfig::with_host(h),
-        (None, Some(p)) => TransportConfig::with_option("path", p),
-        (None, None) => TransportConfig::default(),
-    };
+    let dto = config.unwrap_or_default();
+    let mut cfg = TransportConfig::default();
+    if let Some(h) = dto.host {
+        if !h.is_empty() {
+            cfg.host = Some(h);
+        }
+    }
+    if let Some(p) = dto.path {
+        if !p.is_empty() {
+            cfg.options.insert("path".to_string(), p);
+        }
+    }
+    if let Some(v) = dto.email {
+        if !v.is_empty() {
+            cfg.options.insert("email".to_string(), v);
+        }
+    }
+    if let Some(v) = dto.password {
+        if !v.is_empty() {
+            cfg.options.insert("password".to_string(), v);
+        }
+    }
+    if let Some(v) = dto.apk_path {
+        if !v.is_empty() {
+            cfg.options.insert("apkPath".to_string(), v);
+        }
+    }
+
     let built = state
         .registry
-        .build(&name, &config)
+        .build(&name, &cfg)
         .ok_or_else(|| format!("unknown transport \"{name}\" (see list_available_transports)"))?;
     *state.transport.lock().map_err(|e| e.to_string())? = built;
     *state

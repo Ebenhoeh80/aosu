@@ -71,8 +71,21 @@ impl TransportRegistry {
             let host = cfg.host.clone().unwrap_or_default();
             Box::new(LocalTransport::new(host)) as Box<dyn Transport>
         });
-        r.register("cloud", |_cfg| {
-            Box::new(CloudTransport::default()) as Box<dyn Transport>
+        r.register("cloud", |cfg| {
+            let email = cfg.options.get("email").cloned();
+            let password = cfg.options.get("password").cloned();
+            let apk_path = cfg
+                .options
+                .get("apkPath")
+                .cloned()
+                .or_else(|| cfg.options.get("apk_path").cloned());
+            let creds = match (email, password) {
+                (Some(email), Some(password)) if !email.is_empty() && !password.is_empty() => {
+                    Some(crate::transports::cloud::client::CloudCredentials { email, password })
+                }
+                _ => None,
+            };
+            Box::new(CloudTransport::with_config(creds, apk_path)) as Box<dyn Transport>
         });
         // Fictional second vendor, registered the same way a real
         // third-party crate would -- proves the registry genuinely

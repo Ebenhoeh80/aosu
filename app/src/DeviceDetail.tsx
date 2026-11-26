@@ -78,6 +78,8 @@ export function DeviceDetail({
           <dd>
             {device.wifiSignalPercent !== null ? `${device.wifiSignalPercent}%` : <UnknownField />}
           </dd>
+          <dt className="text-gray-500">Firmware</dt>
+          <dd>{device.firmwareVersion ?? <UnknownField />}</dd>
         </dl>
       )}
 

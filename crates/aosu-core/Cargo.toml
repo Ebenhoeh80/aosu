@@ -11,6 +11,13 @@ serde_json = "1"
 thiserror = "1"
 tuya-lan-protocol = { path = "../tuya-lan-protocol" }
 rusqlite = { version = "0.43", features = ["bundled"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+base64 = "0.22"
+md-5 = "0.10"
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+uuid = { version = "1", features = ["v4"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tempfile = "3"
