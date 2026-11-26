@@ -152,10 +152,11 @@ export function mockCapabilityReport(): CapabilityReport {
     deviceStatus: { type: "supported" },
     events: { type: "supported" },
     notifications: { type: "supported" },
-    liveVideo: { type: "supported" },
-    twoWayAudio: { type: "supported" },
-    recordings: { type: "supported" },
-    commands: { type: "supported" },
+    // No invented media or motor movements, even in demo mode.
+    liveVideo: { type: "unsupported" },
+    twoWayAudio: { type: "unsupported" },
+    recordings: { type: "unsupported" },
+    commands: { type: "unsupported" },
     ptz: { type: "unsupported" },
   };
 }

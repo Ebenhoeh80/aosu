@@ -65,7 +65,7 @@ Ziel: vollständige Nutzerreise gegen Mock-Geräte, unabhängig vom Ausgang von 
 - [x] **Diagnose-Center**: Fähigkeits-Report + Netzwerk-Scan + Laufzeitinfo, JSON-Export (`app/src/DiagnosticsCenter.tsx`, `aosu_core::DiagnosticsBundle`).
 - [x] **Einstellungen**: echte Transport-Umschaltung über die Registry, inklusive session-only Konfiguration für `cloud` und `tuya-cloud` (kein Passwort/`client_secret` auf Platte); Abschnitte ohne echten Unterbau sind explizit als „noch nicht implementiert" markiert, nicht versteckt (`app/src/Settings.tsx`).
 - [x] **Onboarding**: geführte Einführung (was ist echt/simuliert/experimentell), überspringbar, einmalig (`app/src/Onboarding.tsx`).
-- [x] **Offline-Modus**: `app/src/api.ts` fällt bei jedem Tauri-Aufruf auf Mock-Daten zurück; die gesamte App inkl. E2E-Tests läuft ohne jede Tauri-Laufzeit.
+- [x] **Offline-Modus**: `app/src/api.ts` fällt für Inventar, Ereignisse, Benachrichtigungen, Transportliste und Diagnose auf Mock-Daten zurück; die gesamte App inkl. E2E-Tests läuft ohne jede Tauri-Laufzeit. Medien, Befehle und Event-Plattform-Aufrufe haben bewusst **keinen** Mock-Fallback und zeigen echte Fehler.
 - [x] **Fehlerbehandlung**: `ErrorNotice`-Komponente (Erklärung + wahrscheinliche Ursache + Vorschlag) statt roher Fehlermeldungen.
 - [x] **Mock-Ökosystem erweitert**: 6 Geräte über alle Health-Zustände (Healthy/Degraded/Offline/Unsupported/PartiallySupported), simulierbarer Netzwerkausfall (`MockTransport::simulate_network_failure`).
 - [x] **Multi-Vendor-Validierung**: zweiter, bewusst fiktiver Hersteller „Kestrel Labs" (`crates/aosu-core/src/transports/vendor2_mock.rs`), eigenständig implementiert, über die Registry als `kestrel-mock` erreichbar — beweist die Architekturgrenze ohne echtes zweites Gerät.

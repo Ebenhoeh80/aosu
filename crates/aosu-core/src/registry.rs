@@ -27,10 +27,21 @@ pub type TransportFactory = Box<dyn Fn(&TransportConfig) -> Box<dyn Transport> +
 /// Minimal, generic configuration passed to a factory. Deliberately not
 /// Aosu-specific: a future brand's transport can read `host`/`options`
 /// the same way `LocalTransport` does.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct TransportConfig {
     pub host: Option<String>,
     pub options: HashMap<String, String>,
+}
+
+/// Debug output exposes option *names* only. Values can be passwords, tokens
+/// or client secrets, so they are never printed even in diagnostics.
+impl std::fmt::Debug for TransportConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TransportConfig")
+            .field("host", &self.host.as_ref().map(|_| "<set>"))
+            .field("options", &self.options.keys().collect::<Vec<_>>())
+            .finish()
+    }
 }
 
 impl TransportConfig {
@@ -48,6 +59,41 @@ impl TransportConfig {
             host: None,
             options,
         }
+    }
+}
+
+/// Pure mapping of session-only UI options into the Tuya adapter config.
+fn tuya_config(cfg: &TransportConfig) -> TuyaConfig {
+    let get = |key: &str| cfg.options.get(key).cloned().unwrap_or_default();
+    let region = get("region");
+    TuyaConfig {
+        client_id: get("clientId"),
+        client_secret: get("clientSecret"),
+        region: if region.is_empty() {
+            "eu".to_string()
+        } else {
+            region
+        },
+        uid: cfg.options.get("uid").cloned().filter(|s| !s.is_empty()),
+        go2rtc_base: cfg
+            .options
+            .get("go2rtcBase")
+            .cloned()
+            .filter(|s| !s.is_empty()),
+        go2rtc_stream: cfg
+            .options
+            .get("go2rtcStream")
+            .cloned()
+            .filter(|s| !s.is_empty()),
+        callback_base: cfg
+            .options
+            .get("callbackBase")
+            .cloned()
+            .filter(|s| !s.is_empty()),
+        ptz_enabled: cfg
+            .options
+            .get("ptzEnabled")
+            .is_some_and(|v| v.eq_ignore_ascii_case("true")),
     }
 }
 
@@ -106,34 +152,7 @@ impl TransportRegistry {
         // Official Tuya Cloud adapter. All values are RAM-only and must be
         // supplied by the user from their own IoT project.
         r.register("tuya-cloud", |cfg| {
-            let get = |key: &str| cfg.options.get(key).cloned().unwrap_or_default();
-            let config = TuyaConfig {
-                client_id: get("clientId"),
-                client_secret: get("clientSecret"),
-                region: {
-                    let region = get("region");
-                    if region.is_empty() {
-                        "eu".to_string()
-                    } else {
-                        region
-                    }
-                },
-                uid: cfg.options.get("uid").cloned().filter(|s| !s.is_empty()),
-                go2rtc_base: cfg
-                    .options
-                    .get("go2rtcBase")
-                    .cloned()
-                    .filter(|s| !s.is_empty()),
-                callback_base: cfg
-                    .options
-                    .get("callbackBase")
-                    .cloned()
-                    .filter(|s| !s.is_empty()),
-                ptz_enabled: cfg
-                    .options
-                    .get("ptzEnabled")
-                    .is_some_and(|v| v.eq_ignore_ascii_case("true")),
-            };
+            let config = tuya_config(cfg);
             Box::new(
                 TuyaCloudTransport::new(config)
                     .expect("TuyaCloudTransport construction never fails without credentials"),
@@ -255,5 +274,32 @@ mod tests {
         let cfg = TransportConfig::with_host("192.0.2.1");
         let t = r.build("local", &cfg).unwrap();
         assert_eq!(t.name(), "local-h1l");
+    }
+
+    #[test]
+    fn tuya_options_map_to_session_only_config_and_debug_stays_redacted() {
+        let cfg = TransportConfig {
+            host: None,
+            options: HashMap::from([
+                ("clientId".to_string(), "cid".to_string()),
+                (
+                    "clientSecret".to_string(),
+                    "redacted-test-value".to_string(),
+                ),
+                ("region".to_string(), "us".to_string()),
+                ("go2rtcStream".to_string(), "tuya_webrtc".to_string()),
+                ("ptzEnabled".to_string(), "false".to_string()),
+                ("email".to_string(), String::new()),
+            ]),
+        };
+        let tuya = tuya_config(&cfg);
+        assert_eq!(tuya.client_id, "cid");
+        assert_eq!(tuya.region, "us");
+        assert_eq!(tuya.go2rtc_stream.as_deref(), Some("tuya_webrtc"));
+        assert!(!tuya.ptz_enabled);
+        assert_eq!(tuya_config(&TransportConfig::default()).region, "eu");
+        let debug = format!("{cfg:?}");
+        assert!(!debug.contains("redacted-test-value"));
+        assert!(debug.contains("clientSecret"));
     }
 }

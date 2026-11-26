@@ -176,34 +176,22 @@ impl Transport for MockTransport {
                 Err(TransportError::Other("device is offline (mock)".into()))
             }
             Some(d) if d.health == HealthStatus::Unsupported => Err(TransportError::Unsupported),
-            Some(d) => Ok(MediaStreamHandle {
-                description: format!("mock live stream for {}", d.id.0),
-                ..Default::default()
-            }),
+            // The demo transport has no real media source. Never hand the UI
+            // a made-up stream, even in demo mode.
+            Some(_) => Err(TransportError::Unsupported),
         }
     }
 
-    fn talk(&self, device: &DeviceId) -> Result<AudioChannelHandle> {
-        Ok(AudioChannelHandle {
-            description: format!("mock audio channel for {}", device.0),
-            two_way: true,
-            ..Default::default()
-        })
+    fn talk(&self, _device: &DeviceId) -> Result<AudioChannelHandle> {
+        Err(TransportError::Unsupported)
     }
 
-    fn recordings(&self, device: &DeviceId, range: TimeRange) -> Result<Vec<Recording>> {
-        Ok(vec![Recording {
-            device: device.clone(),
-            started_at: range.from,
-            duration_secs: 30,
-            source: RecordingSource::LocalBaseStation,
-            url: None,
-            thumbnail_url: None,
-        }])
+    fn recordings(&self, _device: &DeviceId, _range: TimeRange) -> Result<Vec<Recording>> {
+        Err(TransportError::Unsupported)
     }
 
     fn command(&self, _device: &DeviceId, _cmd: Command) -> Result<()> {
-        Ok(())
+        Err(TransportError::Unsupported)
     }
 
     fn capability_report(&self) -> CapabilityReport {
@@ -214,14 +202,20 @@ impl Transport for MockTransport {
             Capability::DeviceStatus,
             Capability::Events,
             Capability::Notifications,
+        ] {
+            r.set(cap, Support::Supported);
+        }
+        // Demo data is fine for lists and events; media and commands must
+        // never be faked, so they are explicitly unsupported here too.
+        for cap in [
             Capability::LiveVideo,
             Capability::TwoWayAudio,
             Capability::Recordings,
             Capability::Commands,
+            Capability::Ptz,
         ] {
-            r.set(cap, Support::Supported);
+            r.set(cap, Support::Unsupported);
         }
-        r.set(Capability::Ptz, Support::Unsupported);
         r
     }
 }
@@ -271,6 +265,34 @@ mod tests {
             t.capability_report().get(Capability::Ptz),
             Support::Unsupported
         );
+    }
+
+    #[test]
+    fn demo_transport_never_invents_media_or_command_success() {
+        let t = MockTransport::default();
+        let device = DeviceId("mock-cam-1".into());
+        let range = TimeRange {
+            from: Timestamp(0),
+            to: Timestamp(1),
+        };
+        assert!(matches!(t.live(&device), Err(TransportError::Unsupported)));
+        assert!(matches!(t.talk(&device), Err(TransportError::Unsupported)));
+        assert!(matches!(
+            t.recordings(&device, range),
+            Err(TransportError::Unsupported)
+        ));
+        assert!(matches!(
+            t.command(&device, Command::SetLight(true)),
+            Err(TransportError::Unsupported)
+        ));
+        for cap in [
+            Capability::LiveVideo,
+            Capability::TwoWayAudio,
+            Capability::Recordings,
+            Capability::Commands,
+        ] {
+            assert_eq!(t.capability_report().get(cap), Support::Unsupported);
+        }
     }
 
     #[test]

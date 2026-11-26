@@ -19,6 +19,7 @@ export function Settings({ onTransportChanged }: { onTransportChanged?: () => vo
   const [tuyaRegion, setTuyaRegion] = useState("eu");
   const [tuyaUid, setTuyaUid] = useState("");
   const [tuyaGo2rtcBase, setTuyaGo2rtcBase] = useState("");
+  const [tuyaGo2rtcStream, setTuyaGo2rtcStream] = useState("");
   const [tuyaCallbackBase, setTuyaCallbackBase] = useState("");
   const [tuyaPtzEnabled, setTuyaPtzEnabled] = useState(false);
   const [verboseLogging, setVerboseLogging] = useState(
@@ -75,6 +76,7 @@ export function Settings({ onTransportChanged }: { onTransportChanged?: () => vo
                   region: tuyaRegion,
                   uid: tuyaUid,
                   go2rtcBase: tuyaGo2rtcBase,
+                  go2rtcStream: tuyaGo2rtcStream,
                   callbackBase: tuyaCallbackBase,
                   ptzEnabled: tuyaPtzEnabled,
                 }
@@ -182,6 +184,8 @@ export function Settings({ onTransportChanged }: { onTransportChanged?: () => vo
             <input id="tuya-uid" className="border rounded px-2 py-1 w-full" value={tuyaUid} onChange={(e) => setTuyaUid(e.target.value)} autoComplete="off" />
             <label className="block text-xs text-gray-500" htmlFor="tuya-go2rtc">go2rtc-Basis-URL (optional, für Gegensprechen)</label>
             <input id="tuya-go2rtc" className="border rounded px-2 py-1 w-full" value={tuyaGo2rtcBase} onChange={(e) => setTuyaGo2rtcBase(e.target.value)} placeholder="http://127.0.0.1:1984" />
+            <label className="block text-xs text-gray-500" htmlFor="tuya-go2rtc-stream">Name des go2rtc-Streams (optional). Die <code>tuya://</code>-Quelle mit den IoT-Zugangsdaten legst du selbst in go2rtc an; hier kommt nur der Streamname hin.</label>
+            <input id="tuya-go2rtc-stream" className="border rounded px-2 py-1 w-full" value={tuyaGo2rtcStream} onChange={(e) => setTuyaGo2rtcStream(e.target.value)} placeholder="tuya_webrtc" autoComplete="off" />
             <label className="block text-xs text-gray-500" htmlFor="tuya-callback">Öffentliche Callback-Basis-URL für Cloud-Aufnahmen (optional)</label>
             <input id="tuya-callback" className="border rounded px-2 py-1 w-full" value={tuyaCallbackBase} onChange={(e) => setTuyaCallbackBase(e.target.value)} placeholder="https://example.org/aosu-key" />
             <label className="flex items-center gap-2 text-xs text-gray-600">
@@ -189,8 +193,10 @@ export function Settings({ onTransportChanged }: { onTransportChanged?: () => vo
               PTZ freischalten (erst nach erfolgreichem STOP-Test)
             </label>
             <p className="text-xs text-gray-500">
-              Ohne Callback-URL bleiben Aufnahmen blockiert. Ohne go2rtc bleibt Gegensprechen
-              nicht unterstützt. PTZ ist standardmäßig aus.
+              Ohne Callback-URL bleiben Aufnahmen blockiert. Gegensprechen benötigt Basis-URL
+              und Streamnamen einer lokal konfigurierten go2rtc-Quelle. Fähigkeiten werden erst
+              nach einem erfolgreichen Aufruf als verfügbar gemeldet. PTZ bleibt bis zum STOP-Test
+              gesperrt.
             </p>
           </div>
         )}

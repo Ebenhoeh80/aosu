@@ -9,7 +9,7 @@
 //! Secrets and tokens live only in this process. Nothing is written to disk,
 //! logged or returned to the UI beyond short-lived stream URLs.
 
-use crate::capability::{Capability, CapabilityReport, Support};
+use crate::capability::{BlockedReason, Capability, CapabilityReport, Support};
 use crate::device::{
     AudioChannelHandle, Command, Device, DeviceId, Event, HealthStatus, MediaStreamHandle,
     Recording, RecordingSource, TimeRange, Timestamp,
@@ -18,6 +18,7 @@ use crate::transport::{Result, Transport, TransportError};
 use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -30,9 +31,12 @@ pub struct TuyaConfig {
     pub region: String,
     /// UID of the linked app account. When omitted it is taken from the token.
     pub uid: Option<String>,
-    /// Optional local go2rtc base URL (e.g. `http://127.0.0.1:1984`). When
-    /// present, `talk()` returns a WebRTC URL with two-way audio.
+    /// Optional local go2rtc base URL (e.g. `http://127.0.0.1:1984`).
     pub go2rtc_base: Option<String>,
+    /// Name of a stream the user configured in go2rtc with a documented
+    /// `tuya://...` Cloud API source (credentials stay in the user's go2rtc
+    /// config, never in this app). Required for `talk()`.
+    pub go2rtc_stream: Option<String>,
     /// Public HTTPS base URL Tuya can call back for cloud-storage keys, e.g.
     /// `https://example.org/aosu-recording-key`. Required by the documented
     /// HLS playback API; never persisted by this client.
@@ -73,9 +77,39 @@ pub fn api_base(region: &str) -> &'static str {
     }
 }
 
-/// Tuya HMAC-SHA256 signature string, upper-case hex. The token is empty on
-/// the initial `/v1.0/token` call. Body is the exact serialized JSON bytes
-/// (empty string for GET).
+/// URL used in the signature: path plus alphabetically sorted query pairs.
+/// Tuya signs the raw values; the request URL encodes them separately.
+fn sorted_query<'a>(query: &[(&'a str, &'a str)]) -> Vec<(&'a str, &'a str)> {
+    let mut pairs = query.to_vec();
+    pairs.sort_by(|a, b| a.0.cmp(b.0));
+    pairs
+}
+
+fn canonical_url(path: &str, query: &[(&str, &str)]) -> String {
+    let pairs = sorted_query(query);
+    if pairs.is_empty() {
+        return path.to_string();
+    }
+    let joined = pairs
+        .iter()
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect::<Vec<_>>()
+        .join("&");
+    format!("{path}?{joined}")
+}
+
+fn encoded_query(query: &[(&str, &str)]) -> String {
+    sorted_query(query)
+        .iter()
+        .map(|(key, value)| format!("{}={}", key, urlencode(value)))
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
+/// Tuya HMAC-SHA256 signature, upper-case hex. Matches the documented
+/// `stringToSign`: METHOD + newline + lowercase SHA256(body) + newline +
+/// empty signature headers + newline + canonical URL. Callers pass
+/// `canonical_url(path, query)`. The token is empty on `/v1.0/token`.
 pub fn signature(
     client_id: &str,
     client_secret: &str,
@@ -83,11 +117,11 @@ pub fn signature(
     t_ms: &str,
     method: &str,
     body: &str,
-    path: &str,
+    url: &str,
 ) -> String {
-    let body_hash = hex::encode(Sha256::digest(body.as_bytes())).to_uppercase();
+    let body_hash = hex::encode(Sha256::digest(body.as_bytes()));
     let string_to_sign = format!(
-        "{client_id}{access_token}{t_ms}{}\n{body_hash}\n\n{path}",
+        "{client_id}{access_token}{t_ms}{}\n{body_hash}\n\n{url}",
         method.to_ascii_uppercase()
     );
     let mut mac = Hmac::<Sha256>::new_from_slice(client_secret.as_bytes())
@@ -142,6 +176,14 @@ impl TuyaCloudClient {
         !self.config.client_id.trim().is_empty() && !self.config.client_secret.trim().is_empty()
     }
 
+    /// Explicit UID from the IoT project wins over the UID in the token.
+    fn uid(&self) -> Result<String> {
+        if let Some(uid) = self.config.uid.as_ref().filter(|s| !s.trim().is_empty()) {
+            return Ok(uid.clone());
+        }
+        Ok(self.token()?.uid)
+    }
+
     fn token(&self) -> Result<TuyaToken> {
         if let Some(t) = self.token.lock().unwrap().as_ref() {
             if t.expire_at_ms.saturating_sub(60_000) > now_ms() {
@@ -150,6 +192,7 @@ impl TuyaCloudClient {
         }
         let t_ms = now_ms().to_string();
         let path = "/v1.0/token";
+        let query: [(&str, &str); 1] = [("grant_type", "1")];
         let sign = signature(
             &self.config.client_id,
             &self.config.client_secret,
@@ -157,9 +200,14 @@ impl TuyaCloudClient {
             &t_ms,
             "GET",
             "",
-            path,
+            &canonical_url(path, &query),
         );
-        let url = format!("{}{path}?grant_type=1", api_base(&self.config.region));
+        let url = format!(
+            "{}{}?{}",
+            api_base(&self.config.region),
+            path,
+            encoded_query(&query)
+        );
         let resp = self
             .http
             .get(url)
@@ -201,16 +249,12 @@ impl TuyaCloudClient {
             &t_ms,
             method,
             body,
-            path,
+            &canonical_url(path, query),
         );
-        let mut url = format!("{}{path}", api_base(&self.config.region));
+        let mut url = format!("{}{}", api_base(&self.config.region), path);
         if !query.is_empty() {
-            let pairs: Vec<String> = query
-                .iter()
-                .map(|(k, v)| format!("{}={}", k, urlencode(v)))
-                .collect();
             url.push('?');
-            url.push_str(&pairs.join("&"));
+            url.push_str(&encoded_query(query));
         }
         let mut req = match method.to_ascii_uppercase().as_str() {
             "POST" => self.http.post(url).body(body.to_string()),
@@ -240,8 +284,8 @@ impl TuyaCloudClient {
     /// Device list of the linked app account. `from=sharing` covers devices
     /// owned by the OEM app but shared into the user's IoT project.
     pub fn devices(&self) -> Result<Vec<Device>> {
-        let token = self.token()?;
-        let path = format!("/v1.0/users/{}/devices", token.uid);
+        let uid = self.uid()?;
+        let path = format!("/v1.0/users/{uid}/devices");
         let value = self.request(
             "GET",
             &path,
@@ -261,23 +305,14 @@ impl TuyaCloudClient {
 
     /// Short-lived HLS URL from the official stream allocation endpoint.
     pub fn stream_url(&self, device_id: &str) -> Result<String> {
-        let token = self.token()?;
-        let path = format!(
-            "/v1.0/users/{}/devices/{device_id}/stream/actions/allocate",
-            token.uid
-        );
+        let uid = self.uid()?;
+        let path = format!("/v1.0/users/{uid}/devices/{device_id}/stream/actions/allocate");
         let value = self.request("POST", &path, &[], r#"{"type":"hls"}"#)?;
         value
             .get("url")
             .and_then(|v| v.as_str())
             .map(str::to_string)
             .ok_or_else(|| TransportError::Other("tuya stream response has no url".into()))
-    }
-
-    /// WebRTC configuration, used for two-way audio through go2rtc.
-    pub fn webrtc_config(&self, device_id: &str) -> Result<serde_json::Value> {
-        let path = format!("/v1.0/devices/{device_id}/webrtc-configs");
-        self.request("GET", &path, &[], "")
     }
 
     /// Cloud-storage clips in a time range. The documented API requires a
@@ -297,11 +332,8 @@ impl TuyaCloudClient {
             .ok_or(TransportError::Other(
                 "cloud recording callback URL required".into(),
             ))?;
-        let token = self.token()?;
-        let path = format!(
-            "/v1.0/users/{}/devices/{device_id}/storage/stream/hls",
-            token.uid
-        );
+        let uid = self.uid()?;
+        let path = format!("/v1.0/users/{uid}/devices/{device_id}/storage/stream/hls");
         let from_s = from.0.to_string();
         let to_s = to.0.to_string();
         let value = self.request(
@@ -440,16 +472,24 @@ fn map_device(value: &serde_json::Value) -> Option<Device> {
     })
 }
 
-/// The Transport facade. Media capabilities come from the documented Tuya
-/// Cloud endpoints; two-way audio additionally needs a local go2rtc instance.
+/// The Transport facade. Capabilities only become `Supported` after a real
+/// successful call; until then the UI sees `LiveVerificationRequired`.
 pub struct TuyaCloudTransport {
     client: TuyaCloudClient,
+    devices_verified: AtomicBool,
+    live_verified: AtomicBool,
+    commands_verified: AtomicBool,
+    recordings_verified: AtomicBool,
 }
 
 impl TuyaCloudTransport {
     pub fn new(config: TuyaConfig) -> Result<Self> {
         Ok(Self {
             client: TuyaCloudClient::new(config)?,
+            devices_verified: AtomicBool::new(false),
+            live_verified: AtomicBool::new(false),
+            commands_verified: AtomicBool::new(false),
+            recordings_verified: AtomicBool::new(false),
         })
     }
 
@@ -468,7 +508,9 @@ impl Transport for TuyaCloudTransport {
     }
 
     fn devices(&self) -> Result<Vec<Device>> {
-        self.client.devices()
+        let devices = self.client.devices()?;
+        self.devices_verified.store(true, Ordering::Release);
+        Ok(devices)
     }
 
     fn events(&self, _since: Timestamp) -> Result<Vec<Event>> {
@@ -477,6 +519,7 @@ impl Transport for TuyaCloudTransport {
 
     fn live(&self, device: &DeviceId) -> Result<MediaStreamHandle> {
         let url = self.client.stream_url(&device.0)?;
+        self.live_verified.store(true, Ordering::Release);
         Ok(MediaStreamHandle {
             description: "Tuya Cloud HLS stream".into(),
             url: Some(url),
@@ -486,22 +529,29 @@ impl Transport for TuyaCloudTransport {
     }
 
     fn talk(&self, device: &DeviceId) -> Result<AudioChannelHandle> {
-        let base = self
-            .client
-            .config()
+        let cfg = self.client.config();
+        let base = cfg
             .go2rtc_base
             .as_ref()
+            .filter(|s| !s.trim().is_empty())
             .ok_or(TransportError::Unsupported)?;
-        // Validate that the device exposes a WebRTC configuration before
-        // handing a two-way channel to the UI.
-        self.client.webrtc_config(&device.0)?;
-        let src = self.client.stream_url(&device.0)?;
+        // go2rtc's Tuya Cloud source is `tuya://<host>?device_id=...&uid=...`
+        // and must be configured by the user locally. We only hand the UI a
+        // link to that named stream: no credentials or stream URLs here.
+        let stream = cfg
+            .go2rtc_stream
+            .as_ref()
+            .filter(|s| !s.trim().is_empty())
+            .ok_or(TransportError::Unsupported)?;
         Ok(AudioChannelHandle {
-            description: "go2rtc two-way WebRTC audio".into(),
+            description: format!(
+                "go2rtc WebRTC two-way audio (stream: {}, device: {})",
+                stream, device.0
+            ),
             url: Some(format!(
                 "{}/webrtc.html?src={}",
                 base.trim_end_matches('/'),
-                urlencode(&format!("tuya://{src}"))
+                urlencode(stream)
             )),
             protocol: Some("webrtc".into()),
             two_way: true,
@@ -509,68 +559,93 @@ impl Transport for TuyaCloudTransport {
     }
 
     fn recordings(&self, device: &DeviceId, range: TimeRange) -> Result<Vec<Recording>> {
-        self.client.recordings(&device.0, range.from, range.to)
+        let recordings = self.client.recordings(&device.0, range.from, range.to)?;
+        self.recordings_verified.store(true, Ordering::Release);
+        Ok(recordings)
     }
 
     fn command(&self, device: &DeviceId, cmd: Command) -> Result<()> {
         let payload = command_payload(&cmd).ok_or(TransportError::Unsupported)?;
-        self.client.send_commands(&device.0, &payload)
+        self.client.send_commands(&device.0, &payload)?;
+        self.commands_verified.store(true, Ordering::Release);
+        Ok(())
     }
 
     fn capability_report(&self) -> CapabilityReport {
         let mut r = CapabilityReport::new();
         let configured = self.client.has_credentials();
+        let blocked = |reason| Support::Blocked { reason };
+        let credentials = || blocked(BlockedReason::CredentialsRequired);
+        let unverified = || blocked(BlockedReason::LiveVerificationRequired);
+        let read_only = || {
+            if !configured {
+                credentials()
+            } else if self.devices_verified.load(Ordering::Acquire) {
+                Support::Supported
+            } else {
+                unverified()
+            }
+        };
         for cap in [
             Capability::Discover,
             Capability::DeviceList,
             Capability::DeviceStatus,
-            Capability::LiveVideo,
-            Capability::Commands,
         ] {
-            r.set(
-                cap,
-                if configured {
-                    Support::Supported
-                } else {
-                    Support::Blocked {
-                        reason: crate::capability::BlockedReason::CredentialsRequired,
-                    }
-                },
-            );
+            r.set(cap, read_only());
         }
+        let verified_support = |verified: &AtomicBool| {
+            if !configured {
+                credentials()
+            } else if verified.load(Ordering::Acquire) {
+                Support::Supported
+            } else {
+                unverified()
+            }
+        };
+        r.set(Capability::LiveVideo, verified_support(&self.live_verified));
+        r.set(
+            Capability::Commands,
+            verified_support(&self.commands_verified),
+        );
+        let cfg = self.client.config();
+        let talk_ready = cfg
+            .go2rtc_base
+            .as_ref()
+            .is_some_and(|s| !s.trim().is_empty())
+            && cfg
+                .go2rtc_stream
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty());
         r.set(
             Capability::TwoWayAudio,
-            if configured && self.client.config().go2rtc_base.is_some() {
-                Support::Supported
+            if !configured {
+                credentials()
+            } else if talk_ready {
+                // A local go2rtc stream can only be verified by actually
+                // talking to the camera; never claim it from config alone.
+                unverified()
             } else {
                 Support::Unsupported
             },
         );
-        r.set(
-            Capability::Ptz,
-            if configured && self.client.config().ptz_enabled {
-                Support::Supported
-            } else {
-                // Motor moves stay locked until the user validates STOP.
-                Support::Blocked {
-                    reason: crate::capability::BlockedReason::NotImplementedYet,
-                }
-            },
-        );
+        // Motor moves stay locked until the user validates STOP.
+        r.set(Capability::Ptz, blocked(BlockedReason::NotImplementedYet));
         r.set(Capability::Events, Support::Unsupported);
         r.set(Capability::Notifications, Support::Unsupported);
         r.set(
             Capability::Recordings,
-            if configured && self.client.config().callback_base.is_some() {
+            if !configured {
+                credentials()
+            } else if !cfg
+                .callback_base
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty())
+            {
+                blocked(BlockedReason::CallbackUrlRequired)
+            } else if self.recordings_verified.load(Ordering::Acquire) {
                 Support::Supported
-            } else if configured {
-                Support::Blocked {
-                    reason: crate::capability::BlockedReason::CallbackUrlRequired,
-                }
             } else {
-                Support::Blocked {
-                    reason: crate::capability::BlockedReason::CredentialsRequired,
-                }
+                unverified()
             },
         );
         r
@@ -590,14 +665,56 @@ mod tests {
     }
 
     #[test]
-    fn signature_is_deterministic_and_token_dependent() {
-        let a = signature("cid", "secret", "tok", "1000", "GET", "", "/v1.0/token");
-        let b = signature("cid", "secret", "tok", "1000", "GET", "", "/v1.0/token");
-        let c = signature("cid", "secret", "", "1000", "GET", "", "/v1.0/token");
-        assert_eq!(a, b);
-        assert_ne!(a, c);
-        assert_eq!(a.len(), 64);
-        assert!(a.chars().all(|ch| ch.is_ascii_hexdigit()));
+    fn signature_matches_the_documented_canonical_string() {
+        // Fixed, non-secret test values: canonical string is
+        // GET\n<lowercase sha256 of empty body>\n\n/v1.0/token?grant_type=1
+        let sign = signature(
+            "cid",
+            "secret",
+            "",
+            "1000",
+            "GET",
+            "",
+            &canonical_url("/v1.0/token", &[("grant_type", "1")]),
+        );
+        assert_eq!(
+            sign,
+            "CCBE6822CB12148CDF1A65B340EB7E292EBBA47A653023DFC9F8A733FF3898CE"
+        );
+        let with_token = signature(
+            "cid",
+            "secret",
+            "tok",
+            "1000",
+            "GET",
+            "",
+            &canonical_url("/v1.0/token", &[("grant_type", "1")]),
+        );
+        assert_ne!(with_token, sign);
+        assert_eq!(with_token.len(), 64);
+        assert!(with_token.chars().all(|ch| ch.is_ascii_hexdigit()));
+        assert_ne!(
+            signature("cid", "secret", "", "1000", "GET", "", "/v1.0/token"),
+            sign
+        );
+    }
+
+    #[test]
+    fn canonical_and_encoded_urls_sort_query_keys_identically() {
+        let query: [(&str, &str); 3] = [
+            ("callback", "https://example.org/key"),
+            ("time_l_t", "200"),
+            ("time_g_t", "100"),
+        ];
+        assert_eq!(
+            canonical_url("/v1.0/hls", &query),
+            "/v1.0/hls?callback=https://example.org/key&time_g_t=100&time_l_t=200"
+        );
+        assert_eq!(
+            encoded_query(&query),
+            "callback=https%3A%2F%2Fexample.org%2Fkey&time_g_t=100&time_l_t=200"
+        );
+        assert_eq!(canonical_url("/v1.0/devices", &[]), "/v1.0/devices");
     }
 
     #[test]
@@ -632,22 +749,57 @@ mod tests {
     }
 
     #[test]
-    fn capabilities_reflect_configuration() {
+    fn capabilities_never_claim_live_support_before_a_real_call() {
         let cfg = TuyaConfig {
             client_id: "cid".into(),
             client_secret: "secret".into(),
             region: "eu".into(),
             uid: None,
             go2rtc_base: Some("http://127.0.0.1:1984".into()),
+            go2rtc_stream: Some("tuya_webrtc".into()),
             callback_base: Some("https://example.org/aosu-key".into()),
             ptz_enabled: true,
         };
         let t = TuyaCloudTransport::new(cfg).unwrap();
         let report = t.capability_report();
-        assert_eq!(report.get(Capability::LiveVideo), Support::Supported);
-        assert_eq!(report.get(Capability::TwoWayAudio), Support::Supported);
-        assert_eq!(report.get(Capability::Ptz), Support::Supported);
-        assert_eq!(report.get(Capability::Recordings), Support::Supported);
+        for cap in [
+            Capability::Discover,
+            Capability::LiveVideo,
+            Capability::Recordings,
+        ] {
+            assert_eq!(
+                report.get(cap),
+                Support::Blocked {
+                    reason: BlockedReason::LiveVerificationRequired
+                },
+                "{cap:?} must not be advertised as supported without a live call"
+            );
+        }
+        assert_eq!(
+            report.get(Capability::TwoWayAudio),
+            Support::Blocked {
+                reason: BlockedReason::LiveVerificationRequired
+            }
+        );
+        assert_eq!(
+            report.get(Capability::Ptz),
+            Support::Blocked {
+                reason: BlockedReason::NotImplementedYet
+            }
+        );
+
+        // A successful read-only call upgrades only that capability.
+        t.devices_verified.store(true, Ordering::Release);
+        assert_eq!(
+            t.capability_report().get(Capability::DeviceList),
+            Support::Supported
+        );
+        assert_eq!(
+            t.capability_report().get(Capability::LiveVideo),
+            Support::Blocked {
+                reason: BlockedReason::LiveVerificationRequired
+            }
+        );
 
         let locked = TuyaCloudTransport::new(TuyaConfig {
             client_id: "cid".into(),
@@ -655,13 +807,67 @@ mod tests {
             region: "eu".into(),
             uid: None,
             go2rtc_base: None,
+            go2rtc_stream: None,
             callback_base: None,
             ptz_enabled: false,
         })
         .unwrap();
+        assert_eq!(
+            locked.capability_report().get(Capability::LiveVideo),
+            Support::Blocked {
+                reason: BlockedReason::LiveVerificationRequired
+            }
+        );
+        assert_eq!(
+            locked.capability_report().get(Capability::TwoWayAudio),
+            Support::Unsupported
+        );
+        assert_eq!(
+            locked.capability_report().get(Capability::Recordings),
+            Support::Blocked {
+                reason: BlockedReason::CallbackUrlRequired
+            }
+        );
+    }
+
+    #[test]
+    fn talk_links_a_user_configured_go2rtc_stream_without_secrets() {
+        let t = TuyaCloudTransport::new(TuyaConfig {
+            client_id: "cid".into(),
+            client_secret: "secret".into(),
+            region: "eu".into(),
+            uid: None,
+            go2rtc_base: Some("http://127.0.0.1:1984/".into()),
+            go2rtc_stream: Some("tuya_webrtc".into()),
+            callback_base: None,
+            ptz_enabled: false,
+        })
+        .unwrap();
+        let channel = t.talk(&DeviceId("dev-1".into())).unwrap();
+        assert_eq!(
+            channel.url.as_deref(),
+            Some("http://127.0.0.1:1984/webrtc.html?src=tuya_webrtc")
+        );
+        assert!(channel.two_way);
+        assert!(!channel.url.unwrap().contains("secret"));
+
+        let without_stream = TuyaCloudTransport::new(TuyaConfig {
+            go2rtc_stream: None,
+            ..TuyaConfig {
+                client_id: "cid".into(),
+                client_secret: "secret".into(),
+                region: "eu".into(),
+                uid: None,
+                go2rtc_base: Some("http://127.0.0.1:1984".into()),
+                go2rtc_stream: Some("tuya_webrtc".into()),
+                callback_base: None,
+                ptz_enabled: false,
+            }
+        })
+        .unwrap();
         assert!(matches!(
-            locked.capability_report().get(Capability::Ptz),
-            Support::Blocked { .. }
+            without_stream.talk(&DeviceId("dev-1".into())),
+            Err(TransportError::Unsupported)
         ));
     }
 }
