@@ -409,7 +409,11 @@ fn extract_sign_suffix(bytes: &[u8], path: &Path) -> Result<Vec<u8>> {
             let mut f = archive
                 .by_index(i)
                 .map_err(|e| TransportError::Other(e.to_string()))?;
-            if f.name().ends_with(".dex") {
+            let name = f
+                .name()
+                .map_err(|e| TransportError::Other(e.to_string()))?
+                .into_owned();
+            if name.ends_with(".dex") {
                 let mut buf = Vec::new();
                 f.read_to_end(&mut buf)
                     .map_err(|e| TransportError::Other(e.to_string()))?;
