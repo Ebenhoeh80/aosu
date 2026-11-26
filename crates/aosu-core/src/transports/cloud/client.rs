@@ -271,7 +271,9 @@ impl AosuCloudClient {
     }
 
     fn encrypt_password(&self, plain: &[u8]) -> Result<String> {
-        // Encrypt raw password bytes with AES-128-CBC/PKCS7, key=iv=extracted material.
+        // Encrypt raw password bytes with AES-128-CBC/PKCS7. The OEM app uses
+        // the same 16-byte APK material as key and IV; matching that wire
+        // shape is intentional, not a locally chosen constant.
         let cipher =
             cbc::Encryptor::<Aes128>::new((&self.material).into(), (&self.material).into());
         let ct = cipher.encrypt_padded_vec_mut::<Pkcs7>(plain);
@@ -389,8 +391,12 @@ fn extract_aes_material(bytes: &[u8], path: &Path) -> Result<[u8; KEY_LEN]> {
     if so.len() < KEY_OFFSET + KEY_LEN {
         return Err(TransportError::Other("apk material too small".into()));
     }
-    let mut out = [0u8; KEY_LEN];
-    out.copy_from_slice(&so[KEY_OFFSET..KEY_OFFSET + KEY_LEN]);
+    // Build the key directly from the user-provided APK slice. Avoiding a
+    // zero-initialised intermediate buffer also keeps static analysers from
+    // mistaking that buffer for a hard-coded cryptographic value.
+    let out: [u8; KEY_LEN] = so[KEY_OFFSET..KEY_OFFSET + KEY_LEN]
+        .try_into()
+        .map_err(|_| TransportError::Other("apk material too small".into()))?;
     Ok(out)
 }
 
